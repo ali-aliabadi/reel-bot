@@ -22,7 +22,7 @@ Needs macOS or Linux with [uv](https://docs.astral.sh/uv/) and ffmpeg.
 brew install uv ffmpeg     # once
 make tools                 # Python 3.12, locked dev tools, gitleaks
 cp .env.example .env       # then fill in the keys
-make run ARGS=version
+make run ARGS=config    # checks .env, never prints the key
 make check                 # before every commit
 ```
 

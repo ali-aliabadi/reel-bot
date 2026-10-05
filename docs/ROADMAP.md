@@ -27,7 +27,7 @@ should be one small PR unless noted. Design details are in
 - [x] `.github/workflows/ci.yml` (`make check`), actions pinned by SHA; Dependabot for uv and Actions
 - [x] PR template; `.claude/settings.json` allowing the `make` targets
 - [x] `reel-bot-review` project skill; `skills/relay-notify` copied from relay
-- [ ] `config.py`: parse the ARCHITECTURE config table from env, fail fast on missing required values
+- [x] `config.py`: parse the ARCHITECTURE config table from env, fail fast on missing required values; `reel-bot config` to check `.env`
 - [ ] JSON logging setup with a redaction helper for keys and Relay bodies
 - [ ] SessionStart hook so cloud sessions get uv, ffmpeg and gitleaks
 
