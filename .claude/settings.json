@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make)",
+      "Bash(make help)",
+      "Bash(make tools)",
+      "Bash(make run)",
+      "Bash(make run:*)",
+      "Bash(make fmt)",
+      "Bash(make fmt-check)",
+      "Bash(make lint)",
+      "Bash(make test)",
+      "Bash(make sec)",
+      "Bash(make check)",
+      "Bash(make build)",
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run pyright:*)",
+      "Bash(uv lock)",
+      "Bash(scripts/check-file-length.sh)"
+    ]
+  }
+}
