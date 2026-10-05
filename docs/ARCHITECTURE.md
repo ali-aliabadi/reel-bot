@@ -65,14 +65,14 @@ Renders go to `./out/<video id>/`, which is git-ignored.
 
 | Variable | Required | Default | What |
 | --- | --- | --- | --- |
-| `RELAY_URL` | yes | | Relay's base URL |
+| `RELAY_URL` | yes | | Relay's base URL, `https` only |
 | `RELAY_API_KEY` | yes | | reel-bot's Relay key (`relay clients create reel-bot`) |
-| `RELAY_APP` | yes | `reel-bot` | Sent as every message's `source` |
+| `RELAY_APP` | no | `reel-bot` | Sent as every message's `source` |
 | `RELAY_USER` | no | `admin` | Who gets the messages |
 | `REEL_BOT_DB_PATH` | no | `./data/reel-bot.db` | SQLite file |
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
 
-Model, voice and YouTube credentials are added to this table by the roadmap items that need them.
+`reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.
 
 ## Quality tooling
 
