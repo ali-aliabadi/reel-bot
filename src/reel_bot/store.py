@@ -51,6 +51,18 @@ MIGRATIONS = (
         PRIMARY KEY (video_id, stage)
     );
     """,
+    """
+    -- Where every picture, music, footage or font file came from, and its licence.
+    CREATE TABLE assets (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        path TEXT NOT NULL,  -- relative to out/<video id>/
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'music', 'footage', 'font')),
+        source TEXT NOT NULL,
+        licence TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (video_id, path)
+    );
+    """,
 )
 
 

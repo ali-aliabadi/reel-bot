@@ -47,6 +47,17 @@ class StageRun:
     finished_at: datetime
 
 
+@dataclass(frozen=True)
+class Asset:
+    """A file a video uses and where it came from (the licensed-inputs rule)."""
+
+    path: str  # relative to the video's directory
+    kind: str  # image, music, footage or font
+    source: str
+    licence: str
+    added_at: datetime
+
+
 def new_id(now: datetime, rand: Callable[[int], bytes] = secrets.token_bytes) -> str:
     """A `vid_` + ULID: 48 bits of milliseconds then 80 random bits, sortable by time."""
     n = (int(now.timestamp() * 1000) << 80) | int.from_bytes(rand(10))

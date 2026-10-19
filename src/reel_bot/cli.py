@@ -21,6 +21,8 @@ from reel_bot import (
     store_videos,
     stories,
     videos,
+    visuals,
+    visuals_write,
     voice,
 )
 
@@ -59,6 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
     ca = sub.add_parser("captions", help="time the script's words on Tara's take (cached)")
     ca.add_argument("video_id")
+    vi = sub.add_parser("visuals", help="draw one picture per paragraph with OpenAI (cached)")
+    vi.add_argument("video_id")
     return parser
 
 
@@ -159,6 +163,23 @@ def _captions(
     return 0
 
 
+def _visuals(
+    args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]
+) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    conn = _open(env)
+    try:
+        draw = visuals_write.openai(env.get("OPENAI_API_KEY", "").strip())
+        v = visuals_write.make(conn, out_dir, args.video_id, draw, clock)
+    except (visuals.VisualsError, store.StoreError, videos.VideoError, OSError) as err:
+        print(f"visuals: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        conn.close()
+    print(f"{out_dir / args.video_id / visuals_write.FILENAME}\t{len(v.pictures)} pictures")
+    return 0
+
+
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
     conn = _open(env)
     try:
@@ -202,6 +223,7 @@ def main(
         "script": lambda: _script(args, env, clock),
         "voice": lambda: _voice(args, env, clock),
         "captions": lambda: _captions(args, env, clock),
+        "visuals": lambda: _visuals(args, env, clock),
     }
     if args.command in handlers:
         return handlers[args.command]()
