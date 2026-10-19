@@ -80,6 +80,7 @@ Small files keep agent context focused and diffs reviewable.
 - **Dependencies:** prefer the stdlib. Adding a package needs a one-line reason in the PR description.
 - **No `print`** outside `cli.py` (ruff `T20`); use `logging`.
 - **Idempotent runs:** a stage re-run for the same video ID reuses its output on disk instead of paying for it again.
+- **Spend cap:** every paid call is wrapped by `budget.Budget` (worst-case check before, real cost recorded in `spend` after). Never call a paid client unwrapped.
 
 ## Testing
 
@@ -88,6 +89,9 @@ Small files keep agent context focused and diffs reviewable.
 - **Snapshot:** script and edit-timeline JSON compared with files in `tests/snapshots/` (`--update-snapshots` to refresh). Never compare video pixels.
 - **Render smoke:** one test renders a 5 second clip with ffmpeg and checks resolution, duration and audio with ffprobe; it skips with a clear reason when ffmpeg is missing.
 - Never call YouTube, TikTok, Relay or any paid model/voice API in tests. Never put real API keys or channel IDs in fixtures.
+- **Odd inputs:** anything from outside (model and API replies, Tara's recordings, Relay answers) is tested with odd and hostile input: empty, silent, huge, cut off, wrong types, deep nesting, NaN times. Parsers raise only their own error. See `tests/test_odd_inputs.py`.
+- **Timeouts:** every external process and network call has a test that it gives up (`tests/test_timeouts.py`).
+- **Coverage floor:** `make test` fails under 95% (`[tool.coverage.report]` in pyproject.toml). Don't lower it.
 - Every bug fix comes with a test that fails before the fix.
 
 ## Content and platform rules (always on)

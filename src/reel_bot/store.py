@@ -63,6 +63,16 @@ MIGRATIONS = (
         PRIMARY KEY (video_id, path)
     );
     """,
+    """
+    -- One row per paid API call, written as soon as it returns: the monthly spend cap.
+    CREATE TABLE spend (
+        at TEXT NOT NULL,
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        what TEXT NOT NULL,
+        cost_usd REAL NOT NULL CHECK (cost_usd >= 0)
+    );
+    CREATE INDEX spend_at ON spend (at);
+    """,
 )
 
 

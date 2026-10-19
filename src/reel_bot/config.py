@@ -9,6 +9,7 @@ DEFAULT_RELAY_APP = "reel-bot"
 DEFAULT_RELAY_USER = "admin"
 DEFAULT_DB_PATH = "./data/reel-bot.db"
 DEFAULT_OUT_DIR = "./out"
+DEFAULT_MONTHLY_CAP_USD = 20.0
 
 
 class ConfigError(Exception):
@@ -70,3 +71,17 @@ def load(env: Mapping[str, str]) -> Config:
         db_path=Path(get("REEL_BOT_DB_PATH", DEFAULT_DB_PATH)),
         out_dir=Path(get("REEL_BOT_OUT_DIR", DEFAULT_OUT_DIR)),
     )
+
+
+def monthly_cap(env: Mapping[str, str]) -> float:
+    """REEL_BOT_MONTHLY_CAP_USD: the most paid API calls may cost per calendar month (UTC)."""
+    raw = env.get("REEL_BOT_MONTHLY_CAP_USD", "").strip()
+    if not raw:
+        return DEFAULT_MONTHLY_CAP_USD
+    try:
+        cap = float(raw)
+    except ValueError:
+        cap = -1.0
+    if not 0 <= cap < 1000:  # noqa: PLR2004 (a sanity bound, not a setting)
+        raise ConfigError(["REEL_BOT_MONTHLY_CAP_USD must be a number of dollars from 0 to 999"])
+    return cap

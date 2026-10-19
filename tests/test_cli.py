@@ -155,3 +155,19 @@ def test_render_lists_the_missing_stages(
     vid = capsys.readouterr().out.strip()
     assert main(["render", vid], env) == 3
     assert "still needs: voice, captions, visuals" in capsys.readouterr().err
+
+
+def test_make_waits_for_the_pick(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["make", vid], env) == 0
+    out = capsys.readouterr().out
+    assert "total\t$0.000\t0s" in out
+    assert f"waiting for a story pick: reel-bot video choose {vid}" in out
+
+
+def test_a_bad_spend_cap_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_MONTHLY_CAP_USD": "lots"}
+    assert main(["render", "vid_01ARZ3NDEKTSV4RRFFQ69G5FAV"], env) == 2
+    assert "REEL_BOT_MONTHLY_CAP_USD" in capsys.readouterr().err

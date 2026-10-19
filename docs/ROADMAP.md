@@ -42,7 +42,8 @@ should be one small PR unless noted. Design details are in
 - [x] `captions` stage: word timings from OpenAI transcription aligned to the script, caption cues and part timings (burned in by `render`)
 - [x] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests; each picture recorded in `assets`
 - [x] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
-- [ ] `reel-bot make --story <id> --voice <file>` produces a finished MP4 and logs cost and time
+- [x] `reel-bot make <video id> [--voice <file>]` runs every stage the video is ready for, stops for the pick and for Tara's take, and prints cost and time per stage
+- [x] Quality to Relay's level: odd-input tests for every parser, timeout tests for every process and call, a 95% coverage floor, and a monthly spend cap (`REEL_BOT_MONTHLY_CAP_USD`) on every paid call
 
 ## Phase 3: the daily loop through Relay
 

@@ -43,7 +43,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | --- | --- | --- | --- |
 | stories | catalog, tales already used | 3 candidates from different unused tales | One Relay `question`; the pick is recorded |
 | script | chosen story | `script.json`: hook, 3-6 paragraphs each with a picture prompt, the lesson (lesson framing only), source | Claude Opus 5.5 with structured output and refusal fallback; the checker (word budget by length, paragraphs, hook, lesson by framing) allows one retry with its feedback; cost recorded on the stage row |
-| voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg; a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
+| voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg in two passes (clean and trim, then loudness: in one chain ffmpeg 6.1 hangs on a take with no silence to trim); a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
 | captions | script, voice | `captions.json`: each script word with its time, short caption cues (up to 3 words or 16 characters, split at punctuation and pauses), and when each part (hook, paragraphs, lesson) is spoken | OpenAI transcription (`whisper-1`, word timestamps, about $0.006 a minute); the script's words are kept and take their times from the matching heard words, unmatched ones are spread across the gap; under 50% matched is refused as the wrong take, under 85% warns; the render stage burns the cues in |
 | visuals | script | `picture-<n>.png` per paragraph (1024x1536) and `visuals.json` (section, file, prompt) | OpenAI image API (`gpt-image-1`, medium quality, about $0.06 a picture); the prompt is the paragraph's scene plus the fixed style and a calm lower third for captions; the hook plays over the first picture and the lesson over the last; can run while Tara reads; a rerun after a failure draws only missing pictures; each picture is an `assets` row (source, licence) |
 | render | voice, captions, visuals | `render.mp4`: 1080x1920 H.264 (CRF 20) with AAC audio, 30 fps; `captions.ass` | ffmpeg at low priority (`nice`) on 2 threads; each picture pans slowly (alternately down and up) over a frame scaled 10% larger; cuts sit halfway through the pause between parts; the hook plays over the first picture and the lesson over the last; captions burned in with libass in DejaVu Sans Bold (white, black outline, 420 px above the bottom, clear of the Shorts buttons); the output is checked with ffprobe (size, audio, length within 0.5 s of the take); the font is recorded in `assets` |
@@ -59,6 +59,7 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 - `videos`: id (`vid_` + ULID), created_at, framing (`fable` or `lesson`), length (`short` or `long`), story_options (JSON list offered to ali), story_id, chosen_by, chosen_at. A CHECK makes the pick all or nothing; choosing also spends the tale in `tales_used`, in one transaction, and must be one of the options when options were offered. Platform video ID and posted_at come with publishing.
 - `video_stages`: one row per (video, stage): output path relative to `out/<video id>/`, cost_usd, seconds, finished_at. A rerun reuses the output instead of paying again.
 - `assets`: video id, path (relative to `out/<video id>/`), kind (image, music, footage, font), source, licence, added_at.
+- `spend`: one row per paid API call (at, video id, what, cost_usd), written as soon as the call returns; the monthly cap reads it.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 
 `reel-bot stories` lists the stories whose tale is still unused, `reel-bot stories pick` suggests 3 from different tales, and `reel-bot stories use <story id> <video id>` records a tale as told (refused if it already was). Record the hand-made videos this way too.
@@ -66,6 +67,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 `reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
 
 `reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
+
+`reel-bot make <video id>` runs every stage the video is ready for and prints each stage's cost and time: with a picked story it writes the script (also as `read-this.txt` for Tara) and draws the pictures, then stops waiting for Tara's take; `reel-bot make <video id> --voice <file>` imports the take (a new take redoes captions and render) and finishes with `render.mp4`. Cached stages are reused and need no API key.
 
 `reel-bot render <video id>` writes `out/<video id>/render.mp4` once voice, captions and visuals are done, and lists whichever is missing; a rerun reuses it.
 
@@ -89,6 +92,7 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
 | `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |
 | `OPENAI_API_KEY` | for `captions`, `visuals` | | OpenAI API key (transcription and pictures); sent only in the request header, never logged |
+| `REEL_BOT_MONTHLY_CAP_USD` | no | `20` | Most the paid APIs (Claude, OpenAI) may cost per calendar month, UTC. A call whose worst-case cost would pass it is refused before it is made; a second fence behind the providers' own limits |
 | `REEL_BOT_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning` or `error`; JSON lines on stderr, keys and Relay bodies redacted |
 
 `reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.

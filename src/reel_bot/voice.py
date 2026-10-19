@@ -22,11 +22,14 @@ log = logging.getLogger(__name__)
 FILENAME = "voice.wav"
 MAX_INPUT_BYTES = 100 << 20
 TIMEOUT_S = 120
+MIN_SECONDS = 1.0  # less sound than this after trimming means a silent or empty take
 # Spoken length each length setting expects; outside it the take still imports,
 # with a warning, because Tara's reading is the human part and is not redone by a rule.
 SECONDS = {"short": (35.0, 60.0), "long": (55.0, 100.0)}
 _TRIM = "silenceremove=start_periods=1:start_silence=0.15:start_threshold=-50dB"
-FILTERS = ",".join(
+# Two ffmpeg passes: ffmpeg 6.1 never finishes the trim and loudnorm in one chain
+# when the take has no silence to trim.
+CLEAN = ",".join(
     (
         "highpass=f=80",  # rumble and handling noise
         "afftdn=nf=-25",  # steady background hiss
@@ -34,9 +37,9 @@ FILTERS = ",".join(
         "areverse",
         _TRIM,  # silence after the last word
         "areverse",
-        "loudnorm=I=-14:TP=-1.5:LRA=11",  # YouTube's playback loudness
     )
 )
+LEVEL = "loudnorm=I=-14:TP=-1.5:LRA=11"  # YouTube's playback loudness
 
 
 class VoiceError(Exception):
@@ -51,9 +54,18 @@ class Voice:
 
 
 def clean_args(src: Path, dst: Path) -> list[str]:
+    """Pass 1: filter the noise and trim the silence at both ends."""
     return [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
-        "-af", FILTERS, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", str(dst),
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+        "-af", CLEAN, "-ac", "1", "-c:a", "pcm_s16le", str(dst),
+    ]  # fmt: skip
+
+
+def level_args(src: Path, dst: Path) -> list[str]:
+    """Pass 2: set the loudness and the output format."""
+    return [
+        "ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+        "-af", LEVEL, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", str(dst),
     ]  # fmt: skip
 
 
@@ -96,6 +108,16 @@ def _run(args: list[str]) -> str:
     return done.stdout
 
 
+def _check_not_silent(trimmed: Path) -> None:
+    try:
+        seconds = duration(_run(probe_args(trimmed)))
+    except VoiceError:
+        seconds = 0.0  # trimming left no audio at all
+    if seconds < MIN_SECONDS:
+        trimmed.unlink(missing_ok=True)
+        raise VoiceError(f"the take is silent: under {MIN_SECONDS:.0f} s of sound after trimming")
+
+
 def import_take(
     conn: sqlite3.Connection,
     out_dir: Path,
@@ -116,8 +138,11 @@ def import_take(
 
     started = clock()
     folder = videos.video_dir(out_dir, video_id)
-    tmp, dst = folder / "voice.tmp.wav", folder / FILENAME
-    _run(clean_args(take, tmp))
+    trimmed, tmp, dst = folder / "voice.trim.wav", folder / "voice.tmp.wav", folder / FILENAME
+    _run(clean_args(take, trimmed))
+    _check_not_silent(trimmed)
+    _run(level_args(trimmed, tmp))
+    trimmed.unlink()
     seconds = duration(_run(probe_args(tmp)))
     tmp.replace(dst)
     if warning := length_warning(seconds, video.length):
