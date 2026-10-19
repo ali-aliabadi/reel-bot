@@ -9,7 +9,7 @@ in the same PR.
 A Python CLI that turns an old fable into a finished vertical video for one
 adult-framed fables channel (Kalilah and Dimnah, Panchatantra, Rumi, Aesop),
 narrated by Tara. ali picks the story; Tara records the narration; reel-bot does
-the rest. It runs on ali's Mac (later on a schedule), keeps a log of every video
+the rest. It runs on ali's VPS (next to Relay; later on a schedule), keeps a log of every video
 in SQLite, and talks to ali and Tara through Relay.
 
 ## Principles
@@ -44,8 +44,8 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | stories | catalog, tales already used | 3 candidates from different unused tales | One Relay `question`; the pick is recorded |
 | script | chosen story | `script.json`: hook, 3-6 paragraphs each with a picture prompt, the lesson (lesson framing only), source | Claude Opus 5.5 with structured output and refusal fallback; the checker (word budget by length, paragraphs, hook, lesson by framing) allows one retry with its feedback; cost recorded on the stage row |
 | voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg; a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
-| captions | voice | word timings and caption track | Whisper on the Mac; burned in |
-| visuals | script, timings | one picture per paragraph | Image source pending ali's choice (OpenAI API or FLUX on the Mac) |
+| captions | script, voice | `captions.json`: each script word with its time, short caption cues (up to 3 words or 16 characters, split at punctuation and pauses), and when each part (hook, paragraphs, lesson) is spoken | OpenAI transcription (`whisper-1`, word timestamps, about $0.006 a minute); the script's words are kept and take their times from the matching heard words, unmatched ones are spread across the gap; under 50% matched is refused as the wrong take, under 85% warns; the render stage burns the cues in |
+| visuals | script, timings | one picture per paragraph | OpenAI image API |
 | render | everything above | 1080x1920 H.264 MP4, 30 fps | ffmpeg, slow zoom per picture, cuts at pauses |
 | review | render | Relay message with a 720p preview | Relay files are capped at 5 MB |
 | publish | render, metadata | platform video ID | Manual until the YouTube API audit passes |
@@ -67,6 +67,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 `reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
 
+`reel-bot captions <video id>` writes `out/<video id>/captions.json` once the take is imported; a rerun reuses it.
+
 `reel-bot voice <video id> <recording>` cleans Tara's take into `out/<video id>/voice.wav` once the script exists. The Relay flow (phase 3) will call the same import with the voice note it downloads.
 
 Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which accepts only a valid video ID), git-ignored.
@@ -82,6 +84,7 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `REEL_BOT_DB_PATH` | no | `./data/reel-bot.db` | SQLite file |
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
 | `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |
+| `OPENAI_API_KEY` | for `captions` | | OpenAI API key (transcription, later pictures); sent only in the request header, never logged |
 | `REEL_BOT_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning` or `error`; JSON lines on stderr, keys and Relay bodies redacted |
 
 `reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.

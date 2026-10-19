@@ -11,6 +11,8 @@ from pathlib import Path
 
 from reel_bot import (
     __version__,
+    captions,
+    captions_write,
     config,
     logs,
     script,
@@ -55,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
     vo = sub.add_parser("voice", help="import Tara's recording: clean it and set its loudness")
     vo.add_argument("video_id")
     vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
+    ca = sub.add_parser("captions", help="time the script's words on Tara's take (cached)")
+    ca.add_argument("video_id")
     return parser
 
 
@@ -137,6 +141,24 @@ def _voice(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[],
     return 0
 
 
+def _captions(
+    args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]
+) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    conn = _open(env)
+    try:
+        transcribe = captions_write.openai(env.get("OPENAI_API_KEY", "").strip())
+        c = captions_write.make(conn, out_dir, args.video_id, transcribe, clock)
+    except (captions.CaptionsError, store.StoreError, videos.VideoError, OSError) as err:
+        print(f"captions: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        conn.close()
+    path = out_dir / args.video_id / captions_write.FILENAME
+    print(f"{path}\t{len(c.cues)} captions\t{c.matched:.0%} of the script heard")
+    return 0
+
+
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
     conn = _open(env)
     try:
@@ -179,6 +201,7 @@ def main(
         "video": lambda: _video(args, env, clock()),
         "script": lambda: _script(args, env, clock),
         "voice": lambda: _voice(args, env, clock),
+        "captions": lambda: _captions(args, env, clock),
     }
     if args.command in handlers:
         return handlers[args.command]()
