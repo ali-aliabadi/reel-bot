@@ -98,3 +98,13 @@ def test_video_show_unknown(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
     assert main(["video", "show", "vid_nope"], env) == 3
     assert "no video" in capsys.readouterr().err
+
+
+def test_script_refuses_a_video_without_a_pick(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["script", vid], env) == 3
+    assert "no picked story" in capsys.readouterr().err

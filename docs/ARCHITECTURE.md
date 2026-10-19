@@ -42,7 +42,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | Stage | In | Out | Notes |
 | --- | --- | --- | --- |
 | stories | catalog, tales already used | 3 candidates from different unused tales | One Relay `question`; the pick is recorded |
-| script | chosen story | script with hook, paragraphs, picture prompts, source | Claude, retold from a public-domain translation |
+| script | chosen story | `script.json`: hook, 3-6 paragraphs each with a picture prompt, the lesson (lesson framing only), source | Claude Opus 5.5 with structured output and refusal fallback; the checker (word budget by length, paragraphs, hook, lesson by framing) allows one retry with its feedback; cost recorded on the stage row |
 | voice | script | Tara's recording, cleaned and loudness-normalized | Needs voice-note answers in Relay (proposed, not built) |
 | captions | voice | word timings and caption track | Whisper on the Mac; burned in |
 | visuals | script, timings | one picture per paragraph | Image source pending ali's choice (OpenAI API or FLUX on the Mac) |
@@ -65,6 +65,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 `reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
 
+`reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
+
 Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which accepts only a valid video ID), git-ignored.
 
 ## Configuration
@@ -77,6 +79,7 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `RELAY_USER` | no | `admin` | Who gets the messages |
 | `REEL_BOT_DB_PATH` | no | `./data/reel-bot.db` | SQLite file |
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
+| `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |
 | `REEL_BOT_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning` or `error`; JSON lines on stderr, keys and Relay bodies redacted |
 
 `reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.
