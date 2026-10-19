@@ -28,6 +28,7 @@ make run ARGS="video new --framing fable --length short"   # prints a video ID
 make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
 make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json
 make run ARGS="voice VIDEO_ID ~/Downloads/tara.ogg"   # cleans her take into voice.wav
+make run ARGS="visuals VIDEO_ID"    # one picture per paragraph (any time after the script)
 make run ARGS="captions VIDEO_ID"   # word timings and caption cues
 make check                 # before every commit
 ```

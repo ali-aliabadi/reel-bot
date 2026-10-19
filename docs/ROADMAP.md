@@ -40,7 +40,7 @@ should be one small PR unless noted. Design details are in
 - [x] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
 - [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
 - [x] `captions` stage: word timings from OpenAI transcription aligned to the script, caption cues and part timings (burned in by `render`)
-- [ ] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests
+- [x] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests; each picture recorded in `assets`
 - [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
 - [ ] `reel-bot make --story <id> --voice <file>` produces a finished MP4 and logs cost and time
 

@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime
 
 from reel_bot.store import StoreError, mark_used
-from reel_bot.videos import StageRun, Video
+from reel_bot.videos import Asset, StageRun, Video
 
 
 class UnknownVideoError(StoreError):
@@ -110,3 +110,21 @@ def stage_runs(conn: sqlite3.Connection, video_id: str) -> dict[str, StageRun]:
         (video_id,),
     ).fetchall()
     return {r[0]: StageRun(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4])) for r in rows}
+
+
+def add_asset(conn: sqlite3.Connection, video_id: str, asset: Asset) -> None:
+    """Record (or replace) where a video's file came from."""
+    get_video(conn, video_id)
+    conn.execute(
+        "INSERT OR REPLACE INTO assets (video_id, path, kind, source, licence, added_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (video_id, asset.path, asset.kind, asset.source, asset.licence, asset.added_at.isoformat()),
+    )
+
+
+def assets(conn: sqlite3.Connection, video_id: str) -> list[Asset]:
+    rows = conn.execute(
+        "SELECT path, kind, source, licence, added_at FROM assets WHERE video_id = ? ORDER BY path",
+        (video_id,),
+    ).fetchall()
+    return [Asset(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4])) for r in rows]

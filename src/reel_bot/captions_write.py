@@ -2,39 +2,32 @@
 
 OpenAI's transcription API gives the word times (so captions need no model on
 the machine and can later run on the VPS). The call uses the stdlib only: one
-multipart POST with a timeout and bounded retries. `make` is idempotent: a
+multipart POST through `openai_api`. `make` is idempotent: a
 recorded captions stage with its file on disk is reused without another call.
 """
 
 import json
 import logging
-import secrets
 import sqlite3
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import urlparse
 
-from reel_bot import captions, script, store_videos, videos, voice
+from reel_bot import captions, openai_api, script, store_videos, videos, voice
 
 log = logging.getLogger(__name__)
 
-API_URL = "https://api.openai.com/v1"
 MODEL = "whisper-1"  # the transcription model that returns word timestamps
 PRICE_PER_MINUTE = 0.006  # US dollars
 MAX_UPLOAD_BYTES = 25 << 20  # the API's file limit
 TIMEOUT_S = 120.0
-ATTEMPTS = 3
 PROMPT_WORDS = 150  # the API reads only the prompt's last ~224 tokens
 MIN_MATCH = 0.5  # below this the take is not a reading of this script
 WARN_MATCH = 0.85
 FILENAME = "captions.json"
-_RETRY = {429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True)
@@ -62,70 +55,33 @@ def parse(raw: bytes) -> Heard:
         raise captions.CaptionsError("the transcription reply has no word times") from err
 
 
-def _form(fields: list[tuple[str, str]], audio: bytes) -> tuple[bytes, str]:
-    boundary = "reelbot" + secrets.token_hex(12)
-    out = b"".join(
-        f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
-        for k, v in fields
-    )
-    out += (
-        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.wav"\r\n'
-        "Content-Type: audio/wav\r\n\r\n"
-    ).encode()
-    out += audio + f"\r\n--{boundary}--\r\n".encode()
-    return out, f"multipart/form-data; boundary={boundary}"
-
-
 def openai(
     api_key: str,
-    base_url: str = API_URL,
+    base_url: str = openai_api.API_URL,
     sleep: Callable[[float], None] = time.sleep,
 ) -> Transcribe:
-    """A Transcribe backed by OpenAI. The key is sent only in the header and never
-    logged; a plain http base URL is allowed only for a local test server."""
-    url = urlparse(base_url)
-    if url.scheme != "https" and url.hostname != "127.0.0.1":
-        raise captions.CaptionsError("the transcription URL must be https")
-    if not api_key:
-        raise captions.CaptionsError("OPENAI_API_KEY is not set")
+    """A Transcribe backed by OpenAI. A plain http base URL is allowed only for a
+    local test server."""
+    try:
+        client = openai_api.Client(api_key, base_url, TIMEOUT_S, sleep)
+    except openai_api.OpenAIError as err:
+        raise captions.CaptionsError(str(err)) from err
 
     def transcribe(audio: Path, prompt: str) -> Heard:
-        body, ctype = _form(
-            [
-                ("model", MODEL),
-                ("language", "en"),
-                ("response_format", "verbose_json"),
-                ("timestamp_granularities[]", "word"),
-                ("prompt", prompt),
-            ],
-            audio.read_bytes(),
-        )
-        req = urllib.request.Request(  # noqa: S310 (scheme checked above)
-            base_url.rstrip("/") + "/audio/transcriptions",
-            data=body,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": ctype},
-            method="POST",
-        )
-        return parse(_send(req, sleep))
+        fields = [
+            ("model", MODEL),
+            ("language", "en"),
+            ("response_format", "verbose_json"),
+            ("timestamp_granularities[]", "word"),
+            ("prompt", prompt),
+        ]
+        body, ctype = openai_api.form(fields, "voice.wav", "audio/wav", audio.read_bytes())
+        try:
+            return parse(client.post("/audio/transcriptions", body, ctype, "transcription"))
+        except openai_api.OpenAIError as err:
+            raise captions.CaptionsError(str(err)) from err
 
     return transcribe
-
-
-def _send(req: urllib.request.Request, sleep: Callable[[float], None]) -> bytes:
-    for attempt in range(1, ATTEMPTS + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:  # noqa: S310
-                return cast(bytes, resp.read())
-        except urllib.error.HTTPError as err:
-            if err.code not in _RETRY or attempt == ATTEMPTS:
-                raise captions.CaptionsError(f"transcription failed: HTTP {err.code}") from err
-            log.warning("transcription retry", extra={"status": err.code, "attempt": attempt})
-        except (urllib.error.URLError, TimeoutError) as err:
-            if attempt == ATTEMPTS:
-                raise captions.CaptionsError(f"transcription failed: {type(err).__name__}") from err
-            log.warning("transcription retry", extra={"attempt": attempt})
-        sleep(2.0**attempt)
-    raise AssertionError("unreachable")  # pragma: no cover
 
 
 def make(
