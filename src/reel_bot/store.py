@@ -51,6 +51,28 @@ MIGRATIONS = (
         PRIMARY KEY (video_id, stage)
     );
     """,
+    """
+    -- Where every picture, music, footage or font file came from, and its licence.
+    CREATE TABLE assets (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        path TEXT NOT NULL,  -- relative to out/<video id>/
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'music', 'footage', 'font')),
+        source TEXT NOT NULL,
+        licence TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (video_id, path)
+    );
+    """,
+    """
+    -- One row per paid API call, written as soon as it returns: the monthly spend cap.
+    CREATE TABLE spend (
+        at TEXT NOT NULL,
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        what TEXT NOT NULL,
+        cost_usd REAL NOT NULL CHECK (cost_usd >= 0)
+    );
+    CREATE INDEX spend_at ON spend (at);
+    """,
 )
 
 

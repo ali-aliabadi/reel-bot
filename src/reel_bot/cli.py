@@ -11,18 +11,24 @@ from pathlib import Path
 
 from reel_bot import (
     __version__,
+    budget,
+    captions_write,
     config,
     logs,
-    script,
+    pipeline,
+    render_write,
     script_write,
     store,
     store_videos,
     stories,
     videos,
+    visuals_write,
+    voice,
 )
 
 EXIT_CONFIG = 2
 EXIT_REFUSED = 3
+Clock = Callable[[], datetime]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
     choose.add_argument("--by", required=True, help="who chose, e.g. ali")
     sc = sub.add_parser("script", help="write a picked video's script with Claude (cached)")
     sc.add_argument("video_id")
+    vo = sub.add_parser("voice", help="import Tara's recording: clean it and set its loudness")
+    vo.add_argument("video_id")
+    vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
+    ca = sub.add_parser("captions", help="time the script's words on Tara's take (cached)")
+    ca.add_argument("video_id")
+    vi = sub.add_parser("visuals", help="draw one picture per paragraph with OpenAI (cached)")
+    vi.add_argument("video_id")
+    re = sub.add_parser("render", help="render the 1080x1920 MP4 with ffmpeg (cached)")
+    re.add_argument("video_id")
+    mk = sub.add_parser("make", help="run every stage the video is ready for (cached)")
+    mk.add_argument("video_id")
+    mk.add_argument("--voice", type=Path, help="Tara's new take; redoes captions and render")
     return parser
 
 
@@ -105,18 +123,79 @@ def _video(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> i
     return 0
 
 
-def _script(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]) -> int:
+Stage = Callable[[sqlite3.Connection, Path], str]
+
+
+def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
+    """Run one stage command: print its result line, or its error and exit 3."""
     out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
     conn = _open(env)
     try:
-        s = script_write.write(conn, out_dir, args.video_id, script_write.claude(), clock)
-    except (script.ScriptError, store.StoreError, videos.VideoError) as err:
-        print(f"script: {err}", file=sys.stderr)
+        line = action(conn, out_dir)
+    except (*pipeline.ERRORS, store.StoreError, videos.VideoError, OSError) as err:
+        print(f"{name}: {err}", file=sys.stderr)
         return EXIT_REFUSED
     finally:
         conn.close()
-    print(f"{out_dir / args.video_id / script_write.FILENAME}\t{s.words()} words")
+    print(line)
     return 0
+
+
+def _stages(
+    args: argparse.Namespace, env: Mapping[str, str], clock: Clock, cap: float
+) -> dict[str, Stage]:
+    vid = getattr(args, "video_id", "")
+    key = env.get("OPENAI_API_KEY", "").strip()
+
+    def guard(conn: sqlite3.Connection) -> budget.Budget:
+        return budget.Budget(conn, vid, cap, clock)
+
+    def script_(conn: sqlite3.Connection, out: Path) -> str:
+        s = script_write.write(conn, out, vid, guard(conn).claude(script_write.claude()), clock)
+        return f"{out / vid / script_write.FILENAME}\t{s.words()} words"
+
+    def voice_(conn: sqlite3.Connection, out: Path) -> str:
+        v = voice.import_take(conn, out, vid, args.recording, clock)
+        return f"{v.path}\t{v.seconds:.1f} s"
+
+    def captions_(conn: sqlite3.Connection, out: Path) -> str:
+        transcribe = guard(conn).transcribe(captions_write.openai(key))
+        c = captions_write.make(conn, out, vid, transcribe, clock)
+        path = out / vid / captions_write.FILENAME
+        return f"{path}\t{len(c.cues)} captions\t{c.matched:.0%} of the script heard"
+
+    def visuals_(conn: sqlite3.Connection, out: Path) -> str:
+        draw = guard(conn).draw(visuals_write.openai(key))
+        v = visuals_write.make(conn, out, vid, draw, clock)
+        return f"{out / vid / visuals_write.FILENAME}\t{len(v.pictures)} pictures"
+
+    def render_(conn: sqlite3.Connection, out: Path) -> str:
+        r = render_write.make(conn, out, vid, clock)
+        return f"{r.path}\t{r.seconds:.1f} s"
+
+    def make_(conn: sqlite3.Connection, out: Path) -> str:
+        b = guard(conn)
+        ctx = pipeline.Context(
+            out_dir=out,
+            clock=clock,
+            claude=lambda: b.claude(script_write.claude()),
+            transcribe=lambda: b.transcribe(captions_write.openai(key)),
+            draw=lambda: b.draw(visuals_write.openai(key)),
+        )
+        p = pipeline.advance(conn, vid, args.voice, ctx)
+        lines = [f"{r.stage}\t${r.cost_usd:.3f}\t{r.seconds:.0f}s" for r in p.runs]
+        lines.append(f"total\t${p.cost_usd():.3f}\t{p.seconds():.0f}s")
+        lines.append(f"done: {p.render}" if p.render else f"waiting for {p.waiting}")
+        return "\n".join(lines)
+
+    return {
+        "script": script_,
+        "voice": voice_,
+        "captions": captions_,
+        "visuals": visuals_,
+        "render": render_,
+        "make": make_,
+    }
 
 
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
@@ -155,13 +234,19 @@ def main(
     except ValueError as err:
         print(f"config: REEL_BOT_LOG_LEVEL: {err}", file=sys.stderr)
         return EXIT_CONFIG
-    if args.command == "config":
-        return _show_config(env)
-    if args.command == "stories":
-        return _stories(args, env, clock())
-    if args.command == "video":
-        return _video(args, env, clock())
-    if args.command == "script":
-        return _script(args, env, clock)
-    print(__version__)
-    return 0
+    handlers: dict[str, Callable[[], int]] = {
+        "config": lambda: _show_config(env),
+        "stories": lambda: _stories(args, env, clock()),
+        "video": lambda: _video(args, env, clock()),
+    }
+    if args.command in handlers:
+        return handlers[args.command]()
+    if args.command == "version":
+        print(__version__)
+        return 0
+    try:
+        cap = config.monthly_cap(env)
+    except config.ConfigError as err:
+        print(f"config: {err.problems[0]}", file=sys.stderr)
+        return EXIT_CONFIG
+    return _stage(env, args.command, _stages(args, env, clock, cap)[args.command])

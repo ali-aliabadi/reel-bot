@@ -2,10 +2,11 @@
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 
 from reel_bot.store import StoreError, mark_used
-from reel_bot.videos import StageRun, Video
+from reel_bot.videos import Asset, StageRun, Video
 
 
 class UnknownVideoError(StoreError):
@@ -104,9 +105,52 @@ def record_stage(conn: sqlite3.Connection, video_id: str, run: StageRun) -> None
     )
 
 
+def clear_stages(conn: sqlite3.Connection, video_id: str, stages: Sequence[str]) -> None:
+    """Forget stages so the next run redoes them (their old files are overwritten)."""
+    conn.executemany(
+        "DELETE FROM video_stages WHERE video_id = ? AND stage = ?",
+        [(video_id, stage) for stage in stages],
+    )
+
+
 def stage_runs(conn: sqlite3.Connection, video_id: str) -> dict[str, StageRun]:
     rows = conn.execute(
         "SELECT stage, path, cost_usd, seconds, finished_at FROM video_stages WHERE video_id = ?",
         (video_id,),
     ).fetchall()
     return {r[0]: StageRun(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4])) for r in rows}
+
+
+def add_asset(conn: sqlite3.Connection, video_id: str, asset: Asset) -> None:
+    """Record (or replace) where a video's file came from."""
+    get_video(conn, video_id)
+    conn.execute(
+        "INSERT OR REPLACE INTO assets (video_id, path, kind, source, licence, added_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (video_id, asset.path, asset.kind, asset.source, asset.licence, asset.added_at.isoformat()),
+    )
+
+
+def assets(conn: sqlite3.Connection, video_id: str) -> list[Asset]:
+    rows = conn.execute(
+        "SELECT path, kind, source, licence, added_at FROM assets WHERE video_id = ? ORDER BY path",
+        (video_id,),
+    ).fetchall()
+    return [Asset(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4])) for r in rows]
+
+
+def add_spend(
+    conn: sqlite3.Connection, video_id: str, what: str, cost_usd: float, at: datetime
+) -> None:
+    conn.execute(
+        "INSERT INTO spend (at, video_id, what, cost_usd) VALUES (?, ?, ?, ?)",
+        (at.isoformat(), video_id, what, cost_usd),
+    )
+
+
+def spent_since(conn: sqlite3.Connection, since: datetime) -> float:
+    """US dollars of paid calls at or after `since` (UTC ISO strings sort by time)."""
+    (total,) = conn.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0) FROM spend WHERE at >= ?", (since.isoformat(),)
+    ).fetchone()
+    return float(total)

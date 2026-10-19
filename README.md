@@ -20,13 +20,20 @@ narration is the other human part.
 Needs macOS or Linux with [uv](https://docs.astral.sh/uv/) and ffmpeg.
 
 ```bash
-brew install uv ffmpeg     # once
+brew install uv ffmpeg     # once (on the VPS: apt install ffmpeg fonts-dejavu-core, and uv's installer)
 make tools                 # Python 3.12, locked dev tools, gitleaks
 cp .env.example .env       # then fill in the keys
 make run ARGS=config    # checks .env, never prints the key
 make run ARGS="video new --framing fable --length short"   # prints a video ID
 make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
 make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json
+make run ARGS="voice VIDEO_ID ~/Downloads/tara.ogg"   # cleans her take into voice.wav
+make run ARGS="make VIDEO_ID"       # script, read-this.txt for Tara and pictures; then waits
+make run ARGS="make VIDEO_ID --voice ~/Downloads/tara.ogg"   # finishes render.mp4
+# or one stage at a time:
+make run ARGS="visuals VIDEO_ID"    # one picture per paragraph (any time after the script)
+make run ARGS="captions VIDEO_ID"   # word timings and caption cues
+make run ARGS="render VIDEO_ID"     # out/VIDEO_ID/render.mp4, 1080x1920 with burned-in captions
 make check                 # before every commit
 ```
 

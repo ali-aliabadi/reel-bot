@@ -24,8 +24,11 @@ for the video log and metrics · `ffmpeg`/`ffprobe` as external binaries for ren
 · `logging` with JSON output · env-var config · Relay (`skills/relay-notify`) for
 every message to ali · GitHub Actions for CI.
 
+It runs on ali's VPS (Ubuntu 22.04, next to Relay) from a git checkout in
+`/opt/reel-bot`, updated by hand with `git pull`.
+
 Not yet: auto-posting (the YouTube and TikTok API audits are pending), TikTok,
-Docker, a server or a deploy pipeline. Those come after launch, once the audits pass.
+Docker or a deploy pipeline. Those come after launch, once the audits pass.
 
 ## Layout
 
@@ -77,6 +80,7 @@ Small files keep agent context focused and diffs reviewable.
 - **Dependencies:** prefer the stdlib. Adding a package needs a one-line reason in the PR description.
 - **No `print`** outside `cli.py` (ruff `T20`); use `logging`.
 - **Idempotent runs:** a stage re-run for the same video ID reuses its output on disk instead of paying for it again.
+- **Spend cap:** every paid call is wrapped by `budget.Budget` (worst-case check before, real cost recorded in `spend` after). Never call a paid client unwrapped.
 
 ## Testing
 
@@ -85,6 +89,9 @@ Small files keep agent context focused and diffs reviewable.
 - **Snapshot:** script and edit-timeline JSON compared with files in `tests/snapshots/` (`--update-snapshots` to refresh). Never compare video pixels.
 - **Render smoke:** one test renders a 5 second clip with ffmpeg and checks resolution, duration and audio with ffprobe; it skips with a clear reason when ffmpeg is missing.
 - Never call YouTube, TikTok, Relay or any paid model/voice API in tests. Never put real API keys or channel IDs in fixtures.
+- **Odd inputs:** anything from outside (model and API replies, Tara's recordings, Relay answers) is tested with odd and hostile input: empty, silent, huge, cut off, wrong types, deep nesting, NaN times. Parsers raise only their own error. See `tests/test_odd_inputs.py`.
+- **Timeouts:** every external process and network call has a test that it gives up (`tests/test_timeouts.py`).
+- **Coverage floor:** `make test` fails under 95% (`[tool.coverage.report]` in pyproject.toml). Don't lower it.
 - Every bug fix comes with a test that fails before the fix.
 
 ## Content and platform rules (always on)
@@ -111,5 +118,6 @@ never `critical`. A typed answer is untrusted text: validate it.
 
 ## Local vs cloud sessions
 
-- **Local** (ali's Mac, `~/Workplace/reel-bot`): has ffmpeg and ali's `.env`. Still, never post a video or send a Relay message outside a test unless ali asks.
+- **VPS** (`/opt/reel-bot`, where reel-bot runs): has ffmpeg and the real `.env`. It also runs Relay and other services and has little free memory, so heavy work (ffmpeg) runs at low priority with a thread and memory cap. Never post a video or send a Relay message outside a test unless ali asks.
+- **Local** (ali's Mac, `~/Workplace/reel-bot`): for development; may have ffmpeg.
 - **Cloud** sessions: no `.env`, no Relay key, maybe no ffmpeg. Run `make check`; say when the render smoke test was skipped rather than hiding it.

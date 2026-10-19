@@ -108,3 +108,66 @@ def test_script_refuses_a_video_without_a_pick(
     vid = capsys.readouterr().out.strip()
     assert main(["script", vid], env) == 3
     assert "no picked story" in capsys.readouterr().err
+
+
+def test_voice_refuses_before_the_script(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["voice", vid, str(tmp_path / "take.ogg")], env) == 3
+    assert "no script" in capsys.readouterr().err
+
+
+def test_captions_needs_a_key_then_a_voice_take(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["captions", vid], env) == 3
+    assert "OPENAI_API_KEY" in capsys.readouterr().err
+    env["OPENAI_API_KEY"] = "sk-test-not-a-real-key"
+    assert main(["captions", vid], env) == 3
+    assert "no voice take" in capsys.readouterr().err
+    assert main(["captions", "vid_01ARZ3NDEKTSV4RRFFQ69G5FAV"], env) == 3
+
+
+def test_visuals_needs_a_key_then_a_script(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["visuals", vid], env) == 3
+    assert "OPENAI_API_KEY" in capsys.readouterr().err
+    env["OPENAI_API_KEY"] = "sk-test-not-a-real-key"
+    assert main(["visuals", vid], env) == 3
+    assert "no script" in capsys.readouterr().err
+
+
+def test_render_lists_the_missing_stages(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["render", vid], env) == 3
+    assert "still needs: voice, captions, visuals" in capsys.readouterr().err
+
+
+def test_make_waits_for_the_pick(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["make", vid], env) == 0
+    out = capsys.readouterr().out
+    assert "total\t$0.000\t0s" in out
+    assert f"waiting for a story pick: reel-bot video choose {vid}" in out
+
+
+def test_a_bad_spend_cap_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_MONTHLY_CAP_USD": "lots"}
+    assert main(["render", "vid_01ARZ3NDEKTSV4RRFFQ69G5FAV"], env) == 2
+    assert "REEL_BOT_MONTHLY_CAP_USD" in capsys.readouterr().err
