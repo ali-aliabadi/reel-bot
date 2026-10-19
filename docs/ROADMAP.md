@@ -28,7 +28,7 @@ should be one small PR unless noted. Design details are in
 - [x] PR template; `.claude/settings.json` allowing the `make` targets
 - [x] `reel-bot-review` project skill; `skills/relay-notify` copied from relay
 - [x] `config.py`: parse the ARCHITECTURE config table from env, fail fast on missing required values; `reel-bot config` to check `.env`
-- [ ] JSON logging setup with a redaction helper for keys and Relay bodies
+- [x] JSON logging setup with a redaction helper for keys and Relay bodies
 - [ ] SessionStart hook so cloud sessions get uv, ffmpeg and gitleaks
 
 ## Phase 2: one video end to end (manual pick)
@@ -44,7 +44,7 @@ should be one small PR unless noted. Design details are in
 
 ## Phase 3: the daily loop through Relay
 
-- [ ] Relay: voice-note answers to a question (in the relay repo, if ali approves)
+- [x] Relay: voice-note answers to a question (relay PR #23; up to 20 MB, Telegram's cap)
 - [ ] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
 - [ ] Send the script to Tara through Relay and wait for her voice-note answer
 - [ ] "Render ready" Relay message with a 720p preview; failure alert with stage and last error lines

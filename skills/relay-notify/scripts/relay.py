@@ -11,19 +11,21 @@ Standard library only (Python 3.8+). Use it from the shell:
     relay.py send < message.json          # any POST /v1/messages body
     relay.py status msg_01J...
     relay.py recipients
+    relay.py check --to ali               # config, key and recipient all good?
 
 or import it: notify(), ask(), wait_for_answer(), send(), status(), recipients(),
-file_block().
+check(), file_block().
 
 Configuration comes from the environment (see SKILL.md):
     RELAY_URL      Relay's base URL, e.g. https://relay.alialiabadi.ir (required)
     RELAY_API_KEY  this app's API key (required; never print or log it)
     RELAY_APP      this app's name, sent as every message's source (required)
-    RELAY_USER     who to notify when no --to is given (default: admin;
-                   the old name RELAY_ADMIN is still read as a fallback)
+    RELAY_USER     who to notify when no --to is given (optional; with neither,
+                   sending fails: there is no default recipient)
 
-Exit codes: 0 ok, 1 Relay or network error, 2 bad usage or config,
-3 nobody answered before --wait ran out.
+Exit codes: 0 ok, 1 Relay or network error, 2 bad usage or config (including
+no recipient), 3 nobody answered before --wait ran out, 4 check found a
+recipient that is unknown or can't receive yet.
 """
 
 import argparse
@@ -38,6 +40,7 @@ import urllib.request
 import uuid
 
 NO_ANSWER = 3
+CHECK_FAILED = 4
 MAX_FILE_BYTES = 5 << 20  # Relay's limit for one file block
 
 
@@ -48,6 +51,17 @@ class RelayError(Exception):
         self.status, self.code, self.problems = status, code, problems or []
         detail = "; ".join(self.problems) or message
         super().__init__(f"relay: {status} {code}: {detail}")
+
+
+class ConfigError(RelayError):
+    """Missing setup the caller must supply, such as who to notify."""
+
+    def __init__(self, message):
+        super().__init__(0, "config", message)
+        self.args = (f"relay: {message}",)
+
+    def __str__(self):
+        return self.args[0]
 
 
 def _config():
@@ -61,15 +75,18 @@ def _config():
 
 
 def user():
-    """The default recipient: $RELAY_USER, else the old $RELAY_ADMIN, else "admin"."""
-    for name in ("RELAY_USER", "RELAY_ADMIN"):
-        value = os.environ.get(name, "").strip()
-        if value:
-            return value
-    return "admin"
+    """This app's recipient from $RELAY_USER, or None. There is no default."""
+    return os.environ.get("RELAY_USER", "").strip() or None
 
 
-admin = user  # old name, kept for apps that already import it
+def _to(to):
+    """The recipients to send to: to if given, else [$RELAY_USER]."""
+    if to:
+        return list(to)
+    if user():
+        return [user()]
+    raise ConfigError("say who to notify: pass --to NAME (or to=[...]) or set RELAY_USER; "
+                      "run 'relay.py recipients' to see who exists")
 
 
 def _request(method, path, body=None, retries=3):
@@ -84,7 +101,8 @@ def _request(method, path, body=None, retries=3):
             "User-Agent": "relay-notify-skill",
         })
         try:
-            timeout = 15 if len(data or b"") < (1 << 20) else 120  # room to upload a file
+            big = len(data or b"") >= (1 << 20) or path.endswith("/answers")
+            timeout = 120 if big else 15  # room to upload a file or fetch a voice answer
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as e:
@@ -110,9 +128,10 @@ def _api_error(e):
 
 def send(body):
     """POSTs a full /v1/messages body. Fills in to (RELAY_USER), source
-    (RELAY_APP) and idempotency_key when missing. Returns {"id", "status"}."""
+    (RELAY_APP) and idempotency_key when missing; with no to and no
+    RELAY_USER it raises ConfigError. Returns {"id", "status"}."""
     body = dict(body)
-    body.setdefault("to", [user()])
+    body["to"] = _to(body.get("to"))
     body.setdefault("source", _config()[2])
     body.setdefault("idempotency_key", "auto-" + uuid.uuid4().hex)
     return _request("POST", "/v1/messages", body)
@@ -156,13 +175,15 @@ def file_block(path, caption=None, filename=None, content_type=None):
 
 
 def ask(question, options=None, text=None, title=None, urgency="normal", to=None,
-        webhook=None, key=None):
-    """Asks a question: buttons with options, otherwise a typed reply.
-    Returns the message ID to pass to wait_for_answer()."""
+        webhook=None, key=None, voice=False):
+    """Asks a question: buttons with options, a voice note with voice=True,
+    otherwise a typed reply. Returns the message ID to pass to wait_for_answer()."""
     out = [{"type": "text", "text": text}] if text else []
     q = {"type": "question", "text": question}
     if options:
         q["options"] = list(options)
+    if voice:
+        q["reply"] = "voice"
     if webhook:
         q["webhook"] = webhook
     out.append(q)
@@ -170,7 +191,7 @@ def ask(question, options=None, text=None, title=None, urgency="normal", to=None
 
 
 def _envelope(blocks, title, urgency, to, key):
-    body = {"to": list(to) if to else [user()], "urgency": urgency, "blocks": blocks}
+    body = {"to": _to(to), "urgency": urgency, "blocks": blocks}
     for name, value in (("title", title), ("idempotency_key", key)):
         if value:
             body[name] = value
@@ -184,7 +205,8 @@ def answers(message_id):
 
 def wait_for_answer(message_id, timeout_s=3600, every_s=20):
     """Polls until someone answers and returns the first answer
-    ({"recipient", "answer", "answered_at"}), or None after timeout_s."""
+    ({"recipient", "answer", "answered_at"}, plus "audio": {"content_type",
+    "base64"} for a voice note), or None after timeout_s."""
     deadline = time.monotonic() + timeout_s
     while True:
         got = answers(message_id)
@@ -205,6 +227,36 @@ def recipients():
     return _request("GET", "/v1/recipients")["recipients"]
 
 
+def check(to=None):
+    """Checks the setup without sending anything: RELAY_URL and RELAY_API_KEY
+    work, and each name in to (default RELAY_USER) is a recipient with a
+    linked channel. Returns {"ok", "app", "checked", "problems", "recipients"}.
+    Raises RelayError when Relay can't be reached or rejects the key."""
+    _, _, app = _config()
+    rs = recipients()
+    names = list(to) if to else ([user()] if user() else [])
+    by_name = {}
+    for r in rs:
+        for n in [r["username"], *r.get("aliases", [])]:
+            by_name[n] = r
+    checked, problems = [], []
+    for n in names:
+        r = by_name.get(n)
+        if r is None:
+            problems.append(f"{n}: unknown recipient")
+            continue
+        if not r.get("linked_channels"):
+            problems.append(f"{n}: no linked channel yet, so nothing can reach them")
+        checked.append({"name": n, "username": r["username"], "linked_channels": r.get("linked_channels", [])})
+    if not names:
+        problems.append("no recipient to check: pass --to NAME or set RELAY_USER")
+    available = [{"username": r["username"], "aliases": r.get("aliases", []),
+                  "display_name": r.get("display_name", ""),
+                  "linked_channels": r.get("linked_channels", [])} for r in rs]
+    return {"ok": not problems, "app": app, "checked": checked, "problems": problems,
+            "recipients": available}
+
+
 def _parse_fields(pairs):
     out = []
     for p in pairs or []:
@@ -221,7 +273,7 @@ def _cli(argv):
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def common(sp):
-        sp.add_argument("--to", action="append", help="recipient username or alias (repeatable; default $RELAY_USER or admin)")
+        sp.add_argument("--to", action="append", help="recipient username or alias (repeatable; default $RELAY_USER, required without it)")
         sp.add_argument("--urgency", default="normal", choices=["low", "normal", "high", "critical"])
         sp.add_argument("--title")
         sp.add_argument("--key", help="idempotency key; reuse it when retrying the same notification")
@@ -236,6 +288,8 @@ def _cli(argv):
     a = sub.add_parser("ask", help="ask a question; prints the message ID, or the answer with --wait")
     a.add_argument("question")
     a.add_argument("--option", action="append", help="a button (repeatable); none means a typed reply")
+    a.add_argument("--voice", action="store_true", help="ask for a voice note instead of text")
+    a.add_argument("--save-audio", metavar="PATH", help="with --wait: write a voice-note answer here")
     a.add_argument("--text", help="context shown above the question")
     a.add_argument("--webhook", help="public https URL nudged when an answer arrives")
     a.add_argument("--wait", type=int, metavar="SECONDS", help="wait this long for the answer")
@@ -246,9 +300,12 @@ def _cli(argv):
     w.add_argument("message_id")
     w.add_argument("--wait", type=int, default=0, metavar="SECONDS", help="poll this long for an answer")
     w.add_argument("--every", type=int, default=20, metavar="SECONDS")
+    w.add_argument("--save-audio", metavar="PATH", help="write a voice-note answer here")
 
     sub.add_parser("send", help="send a full POST /v1/messages JSON body read from stdin")
     sub.add_parser("recipients", help="list recipients")
+    c = sub.add_parser("check", help="check config, API key and recipient without sending anything")
+    c.add_argument("--to", action="append", help="recipient to check (repeatable; default $RELAY_USER)")
     s = sub.add_parser("status", help="delivery status of a message")
     s.add_argument("message_id")
 
@@ -261,31 +318,49 @@ def _cli(argv):
         return notify(args.text, args.title, args.urgency, args.to, _parse_fields(args.field),
                       key=args.key, file=args.file, file_caption=args.file_caption)
     if args.cmd == "ask":
+        if args.voice and args.option:
+            p.error("--voice can't have --option")
         mid = ask(args.question, args.option, args.text, args.title, args.urgency, args.to,
-                  args.webhook, args.key)
+                  args.webhook, args.key, args.voice)
         if args.wait is None:
             return {"id": mid}
-        return _waited(mid, args.wait, args.every)
+        return _waited(mid, args.wait, args.every, args.save_audio)
     if args.cmd == "answer":
-        return _waited(args.message_id, args.wait, args.every)
+        return _waited(args.message_id, args.wait, args.every, args.save_audio)
     if args.cmd == "send":
         return send(json.load(sys.stdin))
     if args.cmd == "status":
         return status(args.message_id)
+    if args.cmd == "check":
+        res = check(args.to)
+        if not res["ok"]:
+            print(json.dumps(res, ensure_ascii=False))
+            sys.exit(CHECK_FAILED)
+        return res
     return {"recipients": recipients()}
 
 
-def _waited(message_id, wait, every):
+def _waited(message_id, wait, every, save_audio=None):
     got = wait_for_answer(message_id, wait, every)
     if got is None:
         print(json.dumps({"id": message_id, "answer": None}))
         sys.exit(NO_ANSWER)
+    audio = got.pop("audio", None)
+    if audio and save_audio:
+        with open(save_audio, "wb") as f:
+            f.write(base64.b64decode(audio["base64"]))
+        got["audio"] = {"content_type": audio["content_type"], "saved_to": save_audio}
+    elif audio:
+        got["audio"] = audio
     return {"id": message_id, **got}
 
 
 def main():
     try:
         print(json.dumps(_cli(sys.argv[1:]), ensure_ascii=False))
+    except ConfigError as e:
+        print(e, file=sys.stderr)
+        sys.exit(2)
     except RelayError as e:
         print(e, file=sys.stderr)
         sys.exit(1)

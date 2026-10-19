@@ -67,3 +67,8 @@ def test_stories_pick(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
     assert main(["stories", "pick", "-n", "2"], env) == 0
     assert len(capsys.readouterr().out.splitlines()) == 2
+
+
+def test_bad_log_level_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["version"], env={"REEL_BOT_LOG_LEVEL": "loud"}) == 2
+    assert "REEL_BOT_LOG_LEVEL" in capsys.readouterr().err

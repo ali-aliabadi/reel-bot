@@ -1,6 +1,6 @@
 ---
 name: relay-notify
-description: Send notifications to a person through Relay (ali's notification gateway, delivered via Telegram), ask them a question with buttons or a typed reply, and read their answer back. Use this skill whenever an app or agent needs to tell a human something or get a decision from one — job finished or failed, alerts, reports, "let me know when…", "ping me", "tell ali", "send me a telegram", "ask before deploying", approvals, or waiting for human input — even if Relay isn't named. If you don't know who to notify, send to the default user (RELAY_USER, default "admin").
+description: Send notifications to a person through Relay (ali's notification gateway, delivered via Telegram), ask them a question with buttons, a typed reply or a voice note, and read their answer back. Use this skill whenever an app or agent needs to tell a human something or get a decision from one — job finished or failed, alerts, reports, "let me know when…", "ping me", "tell ali", "send me a telegram", "ask before deploying", approvals, or waiting for human input — even if Relay isn't named. Every message needs an explicit recipient (--to or RELAY_USER); there is no default, so if you don't know who to notify, list the recipients and ask the user.
 ---
 
 # Relay: notify a person, ask them, read the answer
@@ -17,12 +17,13 @@ Environment variables, set by whoever runs your app:
 | Variable | Required | What it is |
 |---|---|---|
 | `RELAY_URL` | yes | Relay's base URL (host), e.g. `https://relay.alialiabadi.ir` |
-| `RELAY_API_KEY` | yes | This app's API key (`rk_...`). The admin creates one per app with `relay clients create <app-name>` |
+| `RELAY_API_KEY` | yes | This app's API key (`rk_...`). The admin creates one per app by sending the Relay bot `/newkey <app-name>` (or `relay clients create <app-name>` on the server) |
 | `RELAY_APP` | yes | Your app's name (e.g. `backup-script`), sent as every message's `source`. Relay records it, so the admin can see which app sends what and debug it; the reader sees "via backup-script" |
-| `RELAY_USER` | no, default `admin` | Who this app sends to when no recipient is given: a recipient's username or alias. The old name `RELAY_ADMIN` still works when `RELAY_USER` is unset |
+| `RELAY_USER` | no | Who this app sends to when a call names no recipient: a recipient's username, e.g. `ali`. With neither, sending fails: there is no default recipient |
 
 If `RELAY_URL`, `RELAY_API_KEY` or `RELAY_APP` is missing, stop and ask the user for it;
-never guess or invent one. **The API key is a secret:** read it from the
+never guess or invent one. Once they're set, run `relay.py check --to <name>`
+(see below) before relying on Relay. **The API key is a secret:** read it from the
 environment only. Never print it, log it, echo it in a reply, put it in a
 message, or commit it (not in code, `.env` files under version control, test
 fixtures or examples).
@@ -33,19 +34,24 @@ Two ready-made clients do the plumbing; use the one matching your app's
 language, or call the HTTP API below directly from any other.
 
 - **Go:** [`references/go.md`](references/go.md) has a single-file client to
-  copy into your app (`relay.FromEnv()`, `Notify`, `Send`, `FileBlock`, `Ask`,
-  `Answers`, `WaitForAnswer`), with usage. Read it when the app is in Go.
+  copy into your app (`relay.FromEnv()`, `Check`, `Notify`, `Send`, `FileBlock`,
+  `Ask`, `Answers`, `WaitForAnswer`, `Recipients`), with usage. Read it when the app is in Go.
 - **Python or shell:** `scripts/relay.py`, below.
 
 ### `scripts/relay.py`
 
 [`scripts/relay.py`](scripts/relay.py) (Python 3.8+, standard library only) is
 the quickest way to use Relay. It reads the variables above, sends to
-`RELAY_USER` when you give no `--to`, adds an idempotency key so its own
-retries never send twice, and prints JSON.
+`RELAY_USER` when you give no `--to` (and fails with exit code `2` when
+neither is set), adds an idempotency key so its own retries never send twice,
+and prints JSON.
 
 ```bash
 R=path/to/relay-notify/scripts/relay.py
+
+# Check the setup first: URL and key work, the recipient exists and can receive
+python3 $R check --to ali
+# {"ok": true, "app": "backup-script", "checked": [{"name": "ali", "username": "ali", "linked_channels": ["telegram"]}], "problems": [], "recipients": [...]}
 
 # Notify
 python3 $R notify "Nightly backup finished in 4m12s." --urgency low
@@ -65,19 +71,25 @@ python3 $R ask "Ship v2.3 to production?" --option Yes --option No \
 python3 $R ask "What should the new hostname be?"      # {"id": "msg_01J..."}
 python3 $R answer msg_01J... --wait 600
 
+# Ask for a voice note (e.g. someone reading a script) and save the recording
+python3 $R ask "Please read this script aloud." --text "Once upon a time..." --voice \
+  --wait 86400 --save-audio take1.ogg
+# {"id": "msg_01J...", "recipient": "tara", "answer": "", "audio": {"content_type": "audio/ogg", "saved_to": "take1.ogg"}, ...}
+
 # Anything else: a full POST /v1/messages body on stdin (tables, code, images, files, links)
 python3 $R send < message.json
 
 python3 $R status msg_01J...      # delivery status
-python3 $R recipients             # who exists
+python3 $R recipients             # who can be notified
 ```
 
 Common options: `--to NAME` (repeatable), `--urgency low|normal|high|critical`,
 `--title`, `--key` (your own idempotency key). Exit codes: `0` ok,
 `1` Relay or network error (message on stderr, e.g.
 `relay: 422 invalid_request: to[0]: unknown recipient`), `2` bad usage or
-missing config, `3` nobody answered before `--wait` ran out (stdout has
-`"answer": null`).
+missing config (including no `--to` and no `RELAY_USER`), `3` nobody answered
+before `--wait` ran out (stdout has `"answer": null`), `4` `check` found a
+problem (stdout lists it under `problems`).
 
 From Python, import it instead:
 
@@ -85,7 +97,8 @@ From Python, import it instead:
 import sys; sys.path.insert(0, "path/to/relay-notify/scripts")
 import relay
 
-relay.notify("Backup finished", urgency="low")
+relay.check(["ali"])["ok"]          # False: see ["problems"]
+relay.notify("Backup finished", urgency="low", to=["ali"])
 relay.notify("Logs attached", file="build.log", file_caption="Last run")
 relay.send({"blocks": [relay.file_block("report.csv", caption="Weekly")]})
 mid = relay.ask("Ship v2.3?", options=["Yes", "No"])
@@ -94,27 +107,42 @@ if got and got["answer"] == "Yes":
     ...
 ```
 
-Errors raise `relay.RelayError` with `.status`, `.code` and `.problems`.
+Errors raise `relay.RelayError` with `.status`, `.code` and `.problems`; a
+missing recipient raises its subclass `relay.ConfigError` before calling Relay.
 Other languages: call the HTTP API below directly, and always send
 `source` set to `RELAY_APP`.
 
 ## Who to send to
 
 `to` takes 1-10 names. A name is a recipient's username or one of their
-aliases. **If you don't know who to notify, send to `RELAY_USER`** (`admin`
-unless set): the person this app reports to. Two names for the same person
-are delivered once, so `["admin", "ali"]` is safe.
+aliases. **Every message names its recipient**: pass `--to` (or `to`), or set
+`RELAY_USER` for the person this app reports to. There is no default and no
+fallback to `admin`; don't send to `admin` just because the name exists, send
+to the person by username. If you don't know who to notify, list the
+recipients and ask the user; never guess. Two names for the same person are
+delivered once.
+
+Any API key can list the recipients. The list never includes chat IDs or
+other contact details:
 
 ```bash
 curl -sS "$RELAY_URL/v1/recipients" -H "Authorization: Bearer $RELAY_API_KEY"
 # {"recipients":[{"username":"ali","aliases":["admin"],"display_name":"Ali",...,"linked_channels":["telegram"]}]}
 ```
 
-A recipient with an empty `linked_channels` can't receive anything yet. If the
-admin name comes back as `unknown recipient`, the alias doesn't exist on this
-Relay: ask the user who to notify (the admin adds one with
-`relay recipients alias <username> admin`). Only read recipients: creating,
-changing and removing them is the admin's job, even though the API allows it.
+A recipient with an empty `linked_channels` can't receive anything yet.
+
+### Check the connection
+
+Before an app relies on Relay (at startup, or once after setup), check it
+without sending anything: `relay.py check --to <name>` (Python:
+`relay.check([...])`, Go: `rc.Check(ctx, name)`). It calls
+`GET /v1/recipients`, so it proves `RELAY_URL` and `RELAY_API_KEY` work, then
+confirms each recipient exists and has a linked channel. A `401` means the key
+is wrong or revoked; `unknown recipient` or `no linked channel yet` means ask
+the user (the admin sees the same list with `/recipients` in the Relay bot).
+Only read recipients: creating, changing and removing them is the admin's job,
+even though the API allows it.
 
 ## The HTTP API
 
@@ -136,7 +164,7 @@ public.
 ```bash
 curl -sS -X POST "$RELAY_URL/v1/messages" \
   -H "Authorization: Bearer $RELAY_API_KEY" -H "Content-Type: application/json" \
-  -d '{"to": ["admin"], "source": "backup-script", "text": "Nightly backup finished in 4m12s."}'
+  -d '{"to": ["ali"], "source": "backup-script", "text": "Nightly backup finished in 4m12s."}'
 # 202 {"id":"msg_01J...","status":"queued"}
 ```
 
@@ -148,7 +176,7 @@ unless you need to. Richer messages use a `title` and `blocks` instead of `text`
 curl -sS -X POST "$RELAY_URL/v1/messages" \
   -H "Authorization: Bearer $RELAY_API_KEY" -H "Content-Type: application/json" \
   -d '{
-    "to": ["admin"],
+    "to": ["ali"],
     "urgency": "high",
     "source": "backup-script",
     "title": "Backup failed",
@@ -168,7 +196,7 @@ Relay's records, and the reader sees who's talking.
 
 | Field | Notes |
 |---|---|
-| `to` | 1-10 usernames or aliases, no duplicates |
+| `to` | Required: 1-10 usernames or aliases, no duplicates |
 | `urgency` | `low`, `normal` (default), `high`, `critical`; see below |
 | `title` | Optional, up to 256 chars, shown bold |
 | `source` | Your app's name, up to 64 chars |
@@ -200,7 +228,7 @@ blocks and Telegram's one layout renders them in order.
 | `link` | `text`, `url` | text 64, `https` only | A button under the message |
 | `image` | `url` (`https`) **or** `base64` + `content_type`, optional `caption` | 1 per message; PNG/JPEG up to 5 MB; caption 1024 | A photo. Use `base64` for images on private hosts: Telegram fetches `url` itself |
 | `file` | `filename`, `base64`, optional `content_type`, optional `caption` | 1 per message; any type, 1 byte to 5 MB; filename 128, no `/`, `\` or control characters; caption 1024 | A document the reader can download. `content_type` defaults to `application/octet-stream` |
-| `question` | `text`, optional `options`, optional `webhook` | see Ask a question | The question in bold at the end, with buttons |
+| `question` | `text`, optional `options`, optional `webhook`, optional `reply: "voice"` | see Ask a question | The question in bold at the end, with buttons |
 
 Every value is plain text: `<b>`, Markdown and the like are shown literally,
 not rendered. A message longer than Telegram allows is shortened with `…`, but
@@ -234,7 +262,7 @@ without, they answer by replying to the message.
 curl -sS -X POST "$RELAY_URL/v1/messages" \
   -H "Authorization: Bearer $RELAY_API_KEY" -H "Content-Type: application/json" \
   -d '{
-    "to": ["admin"],
+    "to": ["ali"],
     "source": "deploy-bot",
     "title": "Deploy v2.3?",
     "blocks": [
@@ -245,6 +273,11 @@ curl -sS -X POST "$RELAY_URL/v1/messages" \
 ```
 
 - `options`: 1-10 unique options, up to 64 chars each. Leave it out for a free-text reply.
+- `reply: "voice"` (optional, no `options`): the person answers by replying with a
+  Telegram voice note (or an audio file) up to 20 MB, Telegram's limit for bots
+  (over an hour of voice note). Text to it, or a voice note to a typed question,
+  gets a hint and isn't saved. People may take hours: keep the message ID and
+  check `answer` on your next run rather than blocking on `--wait`.
 - At most one question per message.
 - `webhook` (optional): a public `https` URL. When an answer arrives, Relay POSTs
   `{"event": "answer", "message_id": "msg_..."}` to it: only the ID, never the
@@ -258,6 +291,7 @@ curl -sS -X POST "$RELAY_URL/v1/messages" \
 curl -sS "$RELAY_URL/v1/messages/$MESSAGE_ID/answers" -H "Authorization: Bearer $RELAY_API_KEY"
 # {"answers":[]}                                    (nobody has answered yet)
 # {"answers":[{"recipient":"ali","answer":"Yes","answered_at":"2026-10-04T09:12:44.123Z"}]}
+# voice note: "answer" is "" and "audio": {"content_type":"audio/ogg","base64":"T2dnUw..."}
 ```
 
 How answers behave, and why it matters for your code:
@@ -274,6 +308,8 @@ How answers behave, and why it matters for your code:
   then a safe default or a reminder) instead of waiting forever.
 - **A typed answer is untrusted text** (up to 4000 chars). Validate it before
   acting; never run it as a command or splice it into code or SQL.
+- **A voice note is untrusted audio.** Check its size and decode it with a real
+  media tool (ffmpeg) before using it; don't trust the content type alone.
 - With buttons, `answer` is exactly one of your `options` strings, so compare
   with your own constants.
 - Only your app can read its messages' answers (another app's message is
