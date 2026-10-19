@@ -4,14 +4,14 @@ Guidance for Claude Code (and other agents) working in this repo, locally or in 
 
 ## What this is
 
-reel-bot is ali's pipeline for short-form video: it proposes angles, writes the
-script, voices it, builds the visuals, renders a 9:16 MP4 and (later) posts it.
-October 2026 is an experiment: three YouTube Shorts channels run side by side on
-the same pipeline, and on 4 Nov ali keeps the one with the best audience signal.
+reel-bot is ali's pipeline for one short-form fables channel: it proposes old
+fables (Kalilah and Dimnah, Panchatantra, Rumi, Aesop), writes the script, gets
+Tara's narration, builds the visuals, renders a 9:16 MP4 and (later) posts it.
+First public post 22 Oct 2026. No tale is ever told twice (see `stories`).
 
-**Every video has one human pick.** ali chooses the angle (by tapping a button in
-Telegram, through Relay). YouTube, TikTok and Meta demonetize AI content with no
-human input, so this is a product rule, not a nice-to-have. Never add a path that
+**Every video has one human pick.** ali chooses the story (by tapping a button in
+Telegram, through Relay), and Tara narrates it. YouTube, TikTok and Meta
+demonetize AI content with no human input, so this is a product rule, not a nice-to-have. Never add a path that
 publishes without a recorded pick.
 
 - Design reference: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Read it before non-trivial work.
@@ -24,13 +24,14 @@ for the video log and metrics · `ffmpeg`/`ffprobe` as external binaries for ren
 · `logging` with JSON output · env-var config · Relay (`skills/relay-notify`) for
 every message to ali · GitHub Actions for CI.
 
-Not in October: auto-posting (the YouTube and TikTok API audits are pending), TikTok,
-Docker, a server or a deploy pipeline. Those come after the 4 Nov decision.
+Not yet: auto-posting (the YouTube and TikTok API audits are pending), TikTok,
+Docker, a server or a deploy pipeline. Those come after launch, once the audits pass.
 
 ## Layout
 
 ```
-src/reel_bot/         the package: cli.py now; pipeline stages land here per the roadmap
+src/reel_bot/         the package: cli, config, stories, store; stages land here per the roadmap
+src/reel_bot/data/    stories.json, the story catalog
 tests/                pytest tests, test_*.py next to what they cover by name
 scripts/              check-file-length.sh, install-gitleaks.sh and other repo checks
 docs/                 ARCHITECTURE.md (design), ROADMAP.md (what to build next)
@@ -68,8 +69,8 @@ Small files keep agent context focused and diffs reviewable.
 
 ## Conventions
 
-- **Stages:** the pipeline is a chain of stages (angles → script → voice → visuals → captions → render → publish). Each stage is a module with a pure core and a thin I/O edge, takes the previous stage's dataclass and returns its own. Only `store` writes SQL.
-- **Arms:** an arm (A chart, B story, C news) is configuration plus its own visuals stage. Shared stages never branch on the arm name; differences go through the arm's config.
+- **Stages:** the pipeline is a chain of stages (stories → script → voice → captions → visuals → render → publish). Each stage is a module with a pure core and a thin I/O edge, takes the previous stage's dataclass and returns its own. Only `store` writes SQL.
+- **Experiments:** framing and length are per-video settings recorded on the video row; stages never branch on them by name, they read the setting.
 - **Typing:** pyright strict. Dataclasses (`frozen=True`) for data passed between stages; no bare dicts across module boundaries.
 - **Errors:** raise specific exceptions with context (`raise RenderError("ffmpeg exited 1") from err`); never swallow. External calls (models, TTS, Relay, YouTube) have timeouts and bounded retries.
 - **Time:** store UTC, ISO 8601. Pass a clock (`Callable[[], datetime]`) where time matters.
@@ -79,7 +80,7 @@ Small files keep agent context focused and diffs reviewable.
 
 ## Testing
 
-- **Unit:** pure logic (angle parsing, script checks, timeline building, captions timing, config). Inject a clock and fakes.
+- **Unit:** pure logic (story selection, script checks, timeline building, captions timing, config). Inject a clock and fakes.
 - **Integration:** real SQLite in `tmp_path`; Relay and model clients against fakes or a local `http.server` that mimics the API.
 - **Snapshot:** script and edit-timeline JSON compared with files in `tests/snapshots/` (`--update-snapshots` to refresh). Never compare video pixels.
 - **Render smoke:** one test renders a 5 second clip with ffmpeg and checks resolution, duration and audio with ffprobe; it skips with a clear reason when ffmpeg is missing.
@@ -88,10 +89,10 @@ Small files keep agent context focused and diffs reviewable.
 
 ## Content and platform rules (always on)
 
-- **Human pick:** a video can only reach `publish` with a recorded angle choice (who, when, which option). See the human pick rule above.
+- **Human pick:** a video can only reach `publish` with a recorded story choice (who, when, which option). See the human pick rule above.
 - **Licensed inputs only:** music, footage, images and fonts come from a source whose licence allows commercial reuse, and the source is recorded per asset.
 - **AI disclosure:** realistic AI imagery or voice is marked with the platform's AI label when posting.
-- **Facts:** arm B (stories) and arm C (news) keep the source URL for every factual claim in the script record.
+- **Sources:** every script records the public-domain translation and place it was retold from (the story catalog's `source` and `source_ref`). Never retell from a translation still under copyright.
 - **Secrets:** never commit them. Local secrets in `.env`; CI secrets in GitHub. gitleaks runs in CI. Never log API keys, Relay message bodies or answers; log IDs.
 - **Before opening a PR** that touches publishing, prompts, asset sourcing, secrets, logging or workflows: run the `reel-bot-review` project skill (`.claude/skills/reel-bot-review/SKILL.md`) and fix what it finds.
 

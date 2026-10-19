@@ -15,17 +15,17 @@ Also run: `make sec` (pip-audit, gitleaks) and `make lint` (includes ruff's band
 
 ## 1. Human pick and platform policy
 
-- [ ] No code path reaches `publish` (or marks a video ready) without a recorded angle choice: who, when, which option.
+- [ ] No code path reaches `publish` (or marks a video ready) without a recorded story choice: who, when, which option.
 - [ ] A missing or late answer skips the video; nothing picks a default on ali's behalf.
-- [ ] Videos vary between days inside an arm (hook, visuals, voice pacing): no fixed template that would read as "inauthentic content".
+- [ ] Videos vary between days (hook, visuals, framing, length): no fixed template that would read as "inauthentic content".
 - [ ] Realistic AI imagery or voice sets the platform's AI-content label when posting.
-- [ ] Arm B and C scripts keep a source URL for every factual claim; nothing invents quotes or numbers.
+- [ ] Every script records its public-domain source and place (`source`, `source_ref`); no tale is told twice (`tales_used`); no retelling from a translation still under copyright.
 
 ## 2. Assets and licences
 
 - [ ] Every music, footage, image and font asset has a recorded source and a licence that allows commercial reuse.
 - [ ] No asset is fetched from a URL that came from model output without checking its host against an allowlist.
-- [ ] Screenshots (arm C) show only the public page, never ali's accounts, tabs or notifications.
+- [ ] Tara's recordings and any Relay answer are never logged or committed; log IDs only.
 
 ## 3. Secrets and private data
 
@@ -38,7 +38,7 @@ Also run: `make sec` (pip-audit, gitleaks) and `make lint` (includes ruff's band
 
 - [ ] Every paid API call (model, TTS, image) has a timeout, bounded retries and logs its cost to the video row.
 - [ ] Reruns reuse cached stage output instead of paying again.
-- [ ] Loops over angles, beats or videos have a hard upper bound; a daily run cannot exceed its arm count.
+- [ ] Loops over stories, paragraphs or videos have a hard upper bound; a daily run makes at most the configured number of videos.
 
 ## 5. Inputs and external processes
 

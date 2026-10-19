@@ -1,0 +1,12 @@
+[
+  {"id": "kalilah-lion-and-hare", "tale": "lion-and-hare", "title": "The Lion and the Hare", "collection": "Kalilah and Dimnah", "source": "Ion Keith-Falconer, Kalilah and Dimnah (1885)", "source_ref": "The Lion and the Hare"},
+  {"id": "panchatantra-lion-and-hare", "tale": "lion-and-hare", "title": "The Lion and the Hare", "collection": "Panchatantra", "source": "Arthur W. Ryder, The Panchatantra (1925)", "source_ref": "Book 1, Numskull and the Rabbit"},
+  {"id": "panchatantra-talkative-tortoise", "tale": "talkative-tortoise", "title": "The Talkative Tortoise", "collection": "Panchatantra", "source": "Arthur W. Ryder, The Panchatantra (1925)", "source_ref": "Book 1, The Turtle and the Geese"},
+  {"id": "panchatantra-monkey-and-crocodile", "tale": "monkey-and-crocodile", "title": "The Monkey and the Crocodile", "collection": "Panchatantra", "source": "Arthur W. Ryder, The Panchatantra (1925)", "source_ref": "Book 4, The Monkey and the Crocodile"},
+  {"id": "masnavi-elephant-in-the-dark", "tale": "elephant-in-the-dark", "title": "The Elephant in the Dark", "collection": "Masnavi", "source": "E. H. Whinfield, Masnavi i Ma'navi (1887)", "source_ref": "Book 3, The Elephant in the Dark"},
+  {"id": "masnavi-merchant-and-parrot", "tale": "merchant-and-parrot", "title": "The Merchant and the Parrot", "collection": "Masnavi", "source": "E. H. Whinfield, Masnavi i Ma'navi (1887)", "source_ref": "Book 1, The Merchant and the Parrot"},
+  {"id": "aesop-fox-and-grapes", "tale": "fox-and-grapes", "title": "The Fox and the Grapes", "collection": "Aesop", "source": "George Fyler Townsend, Aesop's Fables (1867)", "source_ref": "The Fox and the Grapes"},
+  {"id": "aesop-ant-and-grasshopper", "tale": "ant-and-grasshopper", "title": "The Ant and the Grasshopper", "collection": "Aesop", "source": "George Fyler Townsend, Aesop's Fables (1867)", "source_ref": "The Grasshopper and the Ants"},
+  {"id": "aesop-north-wind-and-sun", "tale": "north-wind-and-sun", "title": "The North Wind and the Sun", "collection": "Aesop", "source": "George Fyler Townsend, Aesop's Fables (1867)", "source_ref": "The North Wind and the Sun"},
+  {"id": "aesop-boy-who-cried-wolf", "tale": "boy-who-cried-wolf", "title": "The Boy Who Cried Wolf", "collection": "Aesop", "source": "George Fyler Townsend, Aesop's Fables (1867)", "source_ref": "The Shepherd's Boy and the Wolf"}
+]
