@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 
 from reel_bot.store import StoreError, mark_used
@@ -101,6 +102,14 @@ def record_stage(conn: sqlite3.Connection, video_id: str, run: StageRun) -> None
         "INSERT OR REPLACE INTO video_stages"
         " (video_id, stage, path, cost_usd, seconds, finished_at) VALUES (?, ?, ?, ?, ?, ?)",
         (video_id, run.stage, run.path, run.cost_usd, run.seconds, run.finished_at.isoformat()),
+    )
+
+
+def clear_stages(conn: sqlite3.Connection, video_id: str, stages: Sequence[str]) -> None:
+    """Forget stages so the next run redoes them (their old files are overwritten)."""
+    conn.executemany(
+        "DELETE FROM video_stages WHERE video_id = ? AND stage = ?",
+        [(video_id, stage) for stage in stages],
     )
 
 
