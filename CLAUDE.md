@@ -24,8 +24,11 @@ for the video log and metrics · `ffmpeg`/`ffprobe` as external binaries for ren
 · `logging` with JSON output · env-var config · Relay (`skills/relay-notify`) for
 every message to ali · GitHub Actions for CI.
 
+It runs on ali's VPS (Ubuntu 22.04, next to Relay) from a git checkout in
+`/opt/reel-bot`, updated by hand with `git pull`.
+
 Not yet: auto-posting (the YouTube and TikTok API audits are pending), TikTok,
-Docker, a server or a deploy pipeline. Those come after launch, once the audits pass.
+Docker or a deploy pipeline. Those come after launch, once the audits pass.
 
 ## Layout
 
@@ -111,5 +114,6 @@ never `critical`. A typed answer is untrusted text: validate it.
 
 ## Local vs cloud sessions
 
-- **Local** (ali's Mac, `~/Workplace/reel-bot`): has ffmpeg and ali's `.env`. Still, never post a video or send a Relay message outside a test unless ali asks.
+- **VPS** (`/opt/reel-bot`, where reel-bot runs): has ffmpeg and the real `.env`. It also runs Relay and other services and has little free memory, so heavy work (ffmpeg) runs at low priority with a thread and memory cap. Never post a video or send a Relay message outside a test unless ali asks.
+- **Local** (ali's Mac, `~/Workplace/reel-bot`): for development; may have ffmpeg.
 - **Cloud** sessions: no `.env`, no Relay key, maybe no ffmpeg. Run `make check`; say when the render smoke test was skipped rather than hiding it.

@@ -9,12 +9,14 @@ should be one small PR unless noted. Design details are in
 
 - [ ] Add the GitHub remote to the local checkout and push the first commit to `master`
 - [ ] Protect `master` (require PRs and the `make check` status)
-- [ ] Install `uv` and `ffmpeg` on the Mac (`brew install uv ffmpeg`), then `make tools`
+- [ ] Check the VPS's memory before installing: `vmware-toolbox-cmd stat balloon` and `grep -E "Slab|SUnreclaim" /proc/meminfo`
+- [ ] On the VPS: clone to `/opt/reel-bot`, install `uv` and `ffmpeg` (`apt install ffmpeg`), then `make tools`
 - [ ] Create a Relay client: `relay clients create reel-bot`; put the key in `.env` (never in git)
 - [x] Create the fables channel on the work Gmail (one channel, not three)
 - [ ] Create a Google Cloud project and enable YouTube Data API v3 and YouTube Analytics API; file the upload audit once the upload flow works
-- [ ] Anthropic API key in `.env` for scripts
-- [ ] Choose the picture source (OpenAI image API or FLUX on the Mac) and put any key in `.env`
+- [ ] Anthropic API key in the VPS's `.env` for scripts
+- [x] Choose the picture source: OpenAI image API
+- [ ] OpenAI API key, with a monthly limit, in the VPS's `.env` (captions and pictures)
 
 ## Phase 1: skeleton and tooling
 
@@ -37,9 +39,9 @@ should be one small PR unless noted. Design details are in
 - [x] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
 - [x] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
 - [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
-- [ ] `captions` stage: Whisper word timings on the Mac, burned-in captions
-- [ ] `visuals` stage behind a small interface (image API or FLUX), with a fake for tests
-- [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at pauses; render smoke test with ffprobe (skips without ffmpeg)
+- [x] `captions` stage: word timings from OpenAI transcription aligned to the script, caption cues and part timings (burned in by `render`)
+- [ ] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests
+- [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
 - [ ] `reel-bot make --story <id> --voice <file>` produces a finished MP4 and logs cost and time
 
 ## Phase 3: the daily loop through Relay
@@ -48,7 +50,7 @@ should be one small PR unless noted. Design details are in
 - [ ] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
 - [ ] Send the script to Tara through Relay and wait for her voice-note answer
 - [ ] "Render ready" Relay message with a 720p preview; failure alert with stage and last error lines
-- [ ] Scheduled run on the Mac (launchd) at a fixed hour
+- [ ] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render
 - [ ] Grow the catalog: every tale in the four public-domain sources, with source references
 
 ## Phase 4: metrics and decisions
