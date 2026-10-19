@@ -4,16 +4,22 @@ A single-file, standard-library client. Copy the code below into your app as
 `internal/relay/relay.go` (any package path works; Go 1.22+), then:
 
 ```go
-rc, err := relay.FromEnv() // RELAY_URL, RELAY_API_KEY, RELAY_APP, RELAY_USER (default "admin")
+rc, err := relay.FromEnv() // RELAY_URL, RELAY_API_KEY, RELAY_APP, optional RELAY_USER
 if err != nil {
 	return err // missing config: ask the user for it, never guess
 }
 
-// Notify the default user
+// At startup: is the key good and does the recipient exist and have a channel?
+if err := rc.Check(ctx, "ali"); err != nil {
+	return err // *relay.Error for a bad key; a plain error names the recipient problem
+}
+
+// Notify RELAY_USER (an error if it's unset: there is no default recipient)
 id, err := rc.Notify(ctx, "low", "", "Nightly backup finished in 4m12s.")
 
 // Anything richer: build the message from blocks (no templates)
 id, err = rc.Send(ctx, relay.Message{
+	To:      []string{"ali"},
 	Urgency: "high",
 	Title:   "Backup failed",
 	Blocks: []relay.Block{
@@ -50,7 +56,9 @@ if errors.As(err, &re) && re.Code == "invalid_request" {
 ```
 
 `Send` fills in `To` (`RELAY_USER`), `Source` (`RELAY_APP`) and a random
-idempotency key when you leave them empty, and retries 5xx and network errors
+idempotency key when you leave them empty. With no `To` and no `RELAY_USER` it
+returns `relay.ErrNoRecipient` without calling Relay: there is no default
+recipient, so say who to notify. It and retries 5xx and network errors
 with that same key, so a retry never sends twice. Pass your own
 `IdempotencyKey` to make retries across restarts safe too. Never log
 `Client.APIKey`.
@@ -90,7 +98,11 @@ type Block struct {
 	Filename    string     `json:"filename,omitempty"`
 	Options     []string   `json:"options,omitempty"`
 	Webhook     string     `json:"webhook,omitempty"`
+	Reply       string     `json:"reply,omitempty"` // question: "voice" asks for a voice note
 }
+
+// ErrNoRecipient means a message had no To and RELAY_USER is unset.
+var ErrNoRecipient = errors.New("relay: say who to notify: set Message.To or RELAY_USER")
 
 // FileBlock attaches data as a file named filename (shown to the reader).
 // contentType may be empty (application/octet-stream). Relay accepts one
@@ -119,11 +131,26 @@ type Message struct {
 	IdempotencyKey string   `json:"idempotency_key,omitempty"`
 }
 
+// Recipient is someone Relay can notify. Addresses are never returned.
+type Recipient struct {
+	Username       string   `json:"username"`
+	Aliases        []string `json:"aliases"`
+	DisplayName    string   `json:"display_name"`
+	LinkedChannels []string `json:"linked_channels"`
+}
+
 // Answer is one recipient's answer to a question.
 type Answer struct {
 	Recipient  string    `json:"recipient"`
-	Answer     string    `json:"answer"`
+	Answer     string    `json:"answer"` // empty for a voice note
+	Audio      *Audio    `json:"audio,omitempty"`
 	AnsweredAt time.Time `json:"answered_at"`
+}
+
+// Audio is a voice-note answer; Base64 decodes to the recording.
+type Audio struct {
+	ContentType string `json:"content_type"`
+	Base64      string `json:"base64"`
 }
 
 // Error is a Relay API error. Relay never echoes your content in it.
@@ -148,8 +175,8 @@ type Client struct {
 	HTTP                   *http.Client
 }
 
-// FromEnv reads RELAY_URL, RELAY_API_KEY, RELAY_APP and RELAY_USER (default
-// "admin"; the old name RELAY_ADMIN is still read when RELAY_USER is unset).
+// FromEnv reads RELAY_URL, RELAY_API_KEY, RELAY_APP and the optional
+// RELAY_USER (who to notify when a message has no To; there is no default).
 func FromEnv() (*Client, error) {
 	c := &Client{
 		URL:    strings.TrimRight(strings.TrimSpace(os.Getenv("RELAY_URL")), "/"),
@@ -157,12 +184,6 @@ func FromEnv() (*Client, error) {
 		App:    strings.TrimSpace(os.Getenv("RELAY_APP")),
 		User:   strings.TrimSpace(os.Getenv("RELAY_USER")),
 		HTTP:   &http.Client{Timeout: 2 * time.Minute}, // room to upload a 5 MB file
-	}
-	if c.User == "" {
-		c.User = strings.TrimSpace(os.Getenv("RELAY_ADMIN"))
-	}
-	if c.User == "" {
-		c.User = "admin"
 	}
 	if c.URL == "" || c.APIKey == "" || c.App == "" {
 		return nil, errors.New("relay: set RELAY_URL, RELAY_API_KEY and RELAY_APP")
@@ -174,6 +195,9 @@ func FromEnv() (*Client, error) {
 // retried with the same idempotency key, so nothing is sent twice.
 func (c *Client) Send(ctx context.Context, m Message) (string, error) {
 	if len(m.To) == 0 {
+		if c.User == "" {
+			return "", ErrNoRecipient
+		}
 		m.To = []string{c.User}
 	}
 	if m.Source == "" {
@@ -189,14 +213,53 @@ func (c *Client) Send(ctx context.Context, m Message) (string, error) {
 	return out.ID, err
 }
 
-// Notify sends a text message to the default user.
+// Notify sends a text message to RELAY_USER.
 func (c *Client) Notify(ctx context.Context, urgency, title, text string) (string, error) {
 	return c.Send(ctx, Message{Urgency: urgency, Title: title, Blocks: []Block{{Type: "text", Text: text}}})
 }
 
-// Ask asks the default user a question: buttons with options, otherwise a typed reply.
+// Ask asks RELAY_USER a question: buttons with options, otherwise a typed reply.
 func (c *Client) Ask(ctx context.Context, question string, options ...string) (string, error) {
 	return c.Send(ctx, Message{Blocks: []Block{{Type: "question", Text: question, Options: options}}})
+}
+
+// Recipients lists who can be notified.
+func (c *Client) Recipients(ctx context.Context) ([]Recipient, error) {
+	var out struct{ Recipients []Recipient }
+	err := c.do(ctx, http.MethodGet, "/v1/recipients", nil, &out)
+	return out.Recipients, err
+}
+
+// Check sends nothing: it confirms the URL and key work and that each name
+// (default RELAY_USER) is a recipient with a linked channel.
+func (c *Client) Check(ctx context.Context, names ...string) error {
+	if len(names) == 0 && c.User != "" {
+		names = []string{c.User}
+	}
+	if len(names) == 0 {
+		return ErrNoRecipient
+	}
+	rs, err := c.Recipients(ctx)
+	if err != nil {
+		return err
+	}
+	byName := map[string]Recipient{}
+	for _, r := range rs {
+		byName[r.Username] = r
+		for _, a := range r.Aliases {
+			byName[a] = r
+		}
+	}
+	for _, n := range names {
+		r, ok := byName[n]
+		switch {
+		case !ok:
+			return fmt.Errorf("relay: %s: unknown recipient", n)
+		case len(r.LinkedChannels) == 0:
+			return fmt.Errorf("relay: %s: no linked channel yet, so nothing can reach them", n)
+		}
+	}
+	return nil
 }
 
 // Answers returns the answers so far. Every answer returned becomes final.

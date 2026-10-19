@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from reel_bot import __version__, config, store, stories
+from reel_bot import __version__, config, logs, store, stories
 
 EXIT_CONFIG = 2
 EXIT_REFUSED = 3
@@ -79,6 +79,11 @@ def main(
 ) -> int:
     args = build_parser().parse_args(argv)
     env = os.environ if env is None else env
+    try:
+        logs.setup(env.get("REEL_BOT_LOG_LEVEL", "").strip().lower() or "info")
+    except ValueError as err:
+        print(f"config: REEL_BOT_LOG_LEVEL: {err}", file=sys.stderr)
+        return EXIT_CONFIG
     if args.command == "config":
         return _show_config(env)
     if args.command == "stories":
