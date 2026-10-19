@@ -36,7 +36,7 @@ should be one small PR unless noted. Design details are in
 - [x] Story catalog with versions grouped by tale; SQLite store; `reel-bot stories` (list, pick, use); no tale told twice
 - [x] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
 - [x] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
-- [ ] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
+- [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
 - [ ] `captions` stage: Whisper word timings on the Mac, burned-in captions
 - [ ] `visuals` stage behind a small interface (image API or FLUX), with a fake for tests
 - [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at pauses; render smoke test with ffprobe (skips without ffmpeg)
