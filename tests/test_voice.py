@@ -19,12 +19,14 @@ needs_ffmpeg = pytest.mark.skipif(
 )
 
 
-def test_clean_args_are_a_list_with_the_filters(tmp_path: Path) -> None:
-    args = voice.clean_args(tmp_path / "in.ogg", tmp_path / "out.wav")
-    assert args[0] == "ffmpeg"
-    assert args[args.index("-af") + 1] == voice.FILTERS
-    assert "loudnorm=I=-14" in voice.FILTERS
-    assert args[-1] == str(tmp_path / "out.wav")
+def test_clean_and_level_args_are_lists_with_the_filters(tmp_path: Path) -> None:
+    clean = voice.clean_args(tmp_path / "in.ogg", tmp_path / "trim.wav")
+    assert clean[0] == "ffmpeg"
+    assert clean[clean.index("-af") + 1] == voice.CLEAN
+    assert clean[-1] == str(tmp_path / "trim.wav")
+    level = voice.level_args(tmp_path / "trim.wav", tmp_path / "out.wav")
+    assert level[level.index("-af") + 1] == "loudnorm=I=-14:TP=-1.5:LRA=11"
+    assert level[level.index("-ar") + 1] == "48000"
 
 
 @pytest.mark.parametrize(
@@ -107,3 +109,22 @@ def test_imports_cleans_and_records(conn: sqlite3.Connection, tmp_path: Path) ->
     assert 3.5 < got.seconds < 4.6
     assert store_videos.stage_runs(conn, v.id)["voice"].path == "voice.wav"
     assert not (tmp_path / "out" / v.id / "voice.tmp.wav").exists()
+    assert not (tmp_path / "out" / v.id / "voice.trim.wav").exists()
+
+
+@needs_ffmpeg
+def test_a_take_with_no_silence_to_trim_does_not_hang(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ffmpeg 6.1 never finishes silenceremove + areverse + loudnorm in one chain
+    # when there is no silence to trim (a take Tara cut tight, or a noisy room).
+    monkeypatch.setattr(voice, "TIMEOUT_S", 15)
+    v = scripted(conn)
+    take = tmp_path / "take.wav"
+    subprocess.run(  # noqa: S603
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",  # noqa: S607
+         "sine=frequency=200:duration=6", str(take)],
+        check=True,
+    )  # fmt: skip
+    got = voice.import_take(conn, tmp_path / "out", v.id, take, clock)
+    assert 5.5 < got.seconds < 6.5

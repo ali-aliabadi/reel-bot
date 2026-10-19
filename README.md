@@ -28,6 +28,9 @@ make run ARGS="video new --framing fable --length short"   # prints a video ID
 make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
 make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json
 make run ARGS="voice VIDEO_ID ~/Downloads/tara.ogg"   # cleans her take into voice.wav
+make run ARGS="make VIDEO_ID"       # script, read-this.txt for Tara and pictures; then waits
+make run ARGS="make VIDEO_ID --voice ~/Downloads/tara.ogg"   # finishes render.mp4
+# or one stage at a time:
 make run ARGS="visuals VIDEO_ID"    # one picture per paragraph (any time after the script)
 make run ARGS="captions VIDEO_ID"   # word timings and caption cues
 make run ARGS="render VIDEO_ID"     # out/VIDEO_ID/render.mp4, 1080x1920 with burned-in captions

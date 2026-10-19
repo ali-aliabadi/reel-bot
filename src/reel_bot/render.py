@@ -98,7 +98,7 @@ def _shot_filter(i: int, shot: Shot) -> str:
 def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str) -> list[str]:
     """ffmpeg arguments, run with the video's directory as the working directory so
     every file name is relative (and needs no filter escaping)."""
-    args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y"]
+    args = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
     for s in shots:
         args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{s.seconds:.3f}", "-i", s.picture]
     args += ["-i", voice]
