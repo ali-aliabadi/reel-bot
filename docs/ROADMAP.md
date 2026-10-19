@@ -13,7 +13,9 @@ should be one small PR unless noted. Design details are in
 - [ ] On the VPS: clone to `/opt/reel-bot`, install `uv`, `ffmpeg` and the caption font (`apt install ffmpeg fonts-dejavu-core`), then `make tools`
 - [ ] Create a Relay client: `relay clients create reel-bot`; put the key in `.env` (never in git)
 - [x] Create the fables channel on the work Gmail (one channel, not three)
-- [ ] Create a Google Cloud project and enable YouTube Data API v3 and YouTube Analytics API; file the upload audit once the upload flow works
+- [ ] Create a Google Cloud project, enable YouTube Data API v3 and YouTube Analytics API, add a "Desktop app" OAuth client, set the consent screen to In production, then `reel-bot auth youtube`; file the upload audit
+- [ ] Instagram: switch the account to Creator or Business, create a Meta app (Instagram API with Instagram Login), add the account as Instagram Tester, generate a token, `reel-bot auth instagram`
+- [ ] TikTok: create an app with Login Kit and the Content Posting API (Direct Post), register the redirect URI, `reel-bot auth tiktok`; apply for the audit
 - [ ] Anthropic API key in the VPS's `.env` for scripts
 - [x] Choose the picture source: OpenAI image API
 - [ ] OpenAI API key, with a monthly limit, in the VPS's `.env` (captions and pictures)
@@ -63,7 +65,7 @@ should be one small PR unless noted. Design details are in
 
 ## Later
 
-- [ ] Auto-publish to YouTube once the API audit passes, still gated on a recorded pick
-- [ ] TikTok and Instagram Reels, and the TikTok Content Posting API (after its audit)
+- [x] `publish` stage: YouTube, Instagram Reels and TikTok uploads, gated on a recorded pick (also in the database), AI label set, one post per platform, `reel-bot auth` and `reel-bot publish`
+- [ ] Public on YouTube and TikTok once each audit passes (`TIKTOK_PRIVACY=PUBLIC_TO_EVERYONE`)
 - [ ] Run on the VPS with a deploy workflow like relay's
 - [ ] A/B hooks

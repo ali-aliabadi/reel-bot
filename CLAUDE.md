@@ -6,7 +6,7 @@ Guidance for Claude Code (and other agents) working in this repo, locally or in 
 
 reel-bot is ali's pipeline for one short-form fables channel: it proposes old
 fables (Kalilah and Dimnah, Panchatantra, Rumi, Aesop), writes the script, gets
-Tara's narration, builds the visuals, renders a 9:16 MP4 and (later) posts it.
+Tara's narration, builds the visuals, renders a 9:16 MP4 and posts it to YouTube, Instagram and TikTok.
 First public post 22 Oct 2026. No tale is ever told twice (see `stories`).
 
 **Every video has one human pick.** ali chooses the story (by tapping a button in
@@ -27,8 +27,9 @@ every message to ali · GitHub Actions for CI.
 It runs on ali's VPS (Ubuntu 22.04, next to Relay) from a git checkout in
 `/opt/reel-bot`, updated by hand with `git pull`.
 
-Not yet: auto-posting (the YouTube and TikTok API audits are pending), TikTok,
-Docker or a deploy pipeline. Those come after launch, once the audits pass.
+Posting (`reel-bot publish`) is built, but YouTube locks API uploads as private and
+TikTok posts only privately until each platform audits the app; Instagram posts
+publicly now. Not yet: Docker or a deploy pipeline.
 
 ## Layout
 
