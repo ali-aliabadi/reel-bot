@@ -27,6 +27,30 @@ MIGRATIONS = (
         used_at TEXT NOT NULL
     );
     """,
+    """
+    CREATE TABLE videos (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        framing TEXT NOT NULL CHECK (framing IN ('fable', 'lesson')),
+        length TEXT NOT NULL CHECK (length IN ('short', 'long')),
+        story_options TEXT NOT NULL DEFAULT '[]',  -- JSON list of story IDs offered to ali
+        story_id TEXT REFERENCES stories (id),
+        chosen_by TEXT,
+        chosen_at TEXT,
+        -- The human pick is all or nothing.
+        CHECK ((story_id IS NULL) = (chosen_by IS NULL)
+            AND (story_id IS NULL) = (chosen_at IS NULL))
+    );
+    CREATE TABLE video_stages (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        stage TEXT NOT NULL,
+        path TEXT NOT NULL,
+        cost_usd REAL NOT NULL,
+        seconds REAL NOT NULL,
+        finished_at TEXT NOT NULL,
+        PRIMARY KEY (video_id, stage)
+    );
+    """,
 )
 
 

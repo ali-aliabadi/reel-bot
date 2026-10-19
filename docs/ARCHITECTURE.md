@@ -56,13 +56,16 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 - `stories`: the catalog (id, tale, title, collection, source, source_ref), synced from `src/reel_bot/data/stories.json`.
 - `tales_used`: one row per tale ever told (tale is the primary key: the no-repeat rule), with the story, video ID and time.
-- `videos`: id, story, story options, chosen_by, chosen_at, framing, stage outputs, human minutes, cost_usd, platform video ID, posted_at.
+- `videos`: id (`vid_` + ULID), created_at, framing (`fable` or `lesson`), length (`short` or `long`), story_options (JSON list offered to ali), story_id, chosen_by, chosen_at. A CHECK makes the pick all or nothing; choosing also spends the tale in `tales_used`, in one transaction, and must be one of the options when options were offered. Platform video ID and posted_at come with publishing.
+- `video_stages`: one row per (video, stage): output path relative to `out/<video id>/`, cost_usd, seconds, finished_at. A rerun reuses the output instead of paying again.
 - `assets`: video id, kind (music, image, footage, font), source URL, licence.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 
 `reel-bot stories` lists the stories whose tale is still unused, `reel-bot stories pick` suggests 3 from different tales, and `reel-bot stories use <story id> <video id>` records a tale as told (refused if it already was). Record the hand-made videos this way too.
 
-Renders go to `./out/<video id>/`, which is git-ignored.
+`reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
+
+Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which accepts only a valid video ID), git-ignored.
 
 ## Configuration
 
