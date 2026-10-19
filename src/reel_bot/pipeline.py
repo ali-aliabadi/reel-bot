@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 
 from reel_bot import (
+    budget,
     captions,
     captions_write,
     render,
@@ -33,6 +34,7 @@ log = logging.getLogger(__name__)
 
 READ_FILE = "read-this.txt"  # the script as Tara reads it
 ERRORS = (
+    budget.BudgetError,
     script.ScriptError,
     visuals.VisualsError,
     voice.VoiceError,

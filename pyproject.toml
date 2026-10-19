@@ -63,3 +63,6 @@ testpaths = ["tests"]
 [tool.coverage.run]
 source = ["reel_bot"]
 branch = true
+
+[tool.coverage.report]
+fail_under = 95  # CI fails if coverage drops below this

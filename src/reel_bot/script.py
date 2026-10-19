@@ -120,7 +120,7 @@ def parse(raw: str, story: Story, video: Video) -> Script:
             for p in cast(list[dict[str, Any]], data["paragraphs"])
         )
         hook, lesson = str(data["hook"]).strip(), str(data["lesson"]).strip()
-    except (ValueError, KeyError, TypeError) as err:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError, RecursionError) as err:
         raise ScriptError("the model's reply is not a script") from err
     return Script(
         video_id=video.id,

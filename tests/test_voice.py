@@ -128,3 +128,21 @@ def test_a_take_with_no_silence_to_trim_does_not_hang(
     )  # fmt: skip
     got = voice.import_take(conn, tmp_path / "out", v.id, take, clock)
     assert 5.5 < got.seconds < 6.5
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("seconds", ["5", "0.05"])
+def test_a_silent_or_empty_take_is_refused_clearly(
+    conn: sqlite3.Connection, tmp_path: Path, seconds: str
+) -> None:
+    v = scripted(conn)
+    take = tmp_path / "take.wav"
+    subprocess.run(  # noqa: S603
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",  # noqa: S607
+         "anullsrc=r=48000:cl=mono", "-t", seconds, str(take)],
+        check=True,
+    )  # fmt: skip
+    with pytest.raises(voice.VoiceError, match="silent"):
+        voice.import_take(conn, tmp_path / "out", v.id, take, clock)
+    assert list((tmp_path / "out" / v.id).iterdir()) == []
+    assert "voice" not in store_videos.stage_runs(conn, v.id)

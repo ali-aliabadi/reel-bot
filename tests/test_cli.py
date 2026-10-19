@@ -165,3 +165,9 @@ def test_make_waits_for_the_pick(tmp_path: Path, capsys: pytest.CaptureFixture[s
     out = capsys.readouterr().out
     assert "total\t$0.000\t0s" in out
     assert f"waiting for a story pick: reel-bot video choose {vid}" in out
+
+
+def test_a_bad_spend_cap_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_MONTHLY_CAP_USD": "lots"}
+    assert main(["render", "vid_01ARZ3NDEKTSV4RRFFQ69G5FAV"], env) == 2
+    assert "REEL_BOT_MONTHLY_CAP_USD" in capsys.readouterr().err
