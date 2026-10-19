@@ -15,6 +15,8 @@ from reel_bot import (
     captions_write,
     config,
     logs,
+    render,
+    render_write,
     script,
     script_write,
     store,
@@ -63,6 +65,8 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("video_id")
     vi = sub.add_parser("visuals", help="draw one picture per paragraph with OpenAI (cached)")
     vi.add_argument("video_id")
+    re = sub.add_parser("render", help="render the 1080x1920 MP4 with ffmpeg (cached)")
+    re.add_argument("video_id")
     return parser
 
 
@@ -180,6 +184,20 @@ def _visuals(
     return 0
 
 
+def _render(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    conn = _open(env)
+    try:
+        r = render_write.make(conn, out_dir, args.video_id, clock)
+    except (render.RenderError, store.StoreError, videos.VideoError, OSError) as err:
+        print(f"render: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        conn.close()
+    print(f"{r.path}\t{r.seconds:.1f} s")
+    return 0
+
+
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
     conn = _open(env)
     try:
@@ -224,6 +242,7 @@ def main(
         "voice": lambda: _voice(args, env, clock),
         "captions": lambda: _captions(args, env, clock),
         "visuals": lambda: _visuals(args, env, clock),
+        "render": lambda: _render(args, env, clock),
     }
     if args.command in handlers:
         return handlers[args.command]()

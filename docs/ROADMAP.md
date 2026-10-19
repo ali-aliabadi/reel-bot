@@ -10,7 +10,7 @@ should be one small PR unless noted. Design details are in
 - [ ] Add the GitHub remote to the local checkout and push the first commit to `master`
 - [ ] Protect `master` (require PRs and the `make check` status)
 - [ ] Check the VPS's memory before installing: `vmware-toolbox-cmd stat balloon` and `grep -E "Slab|SUnreclaim" /proc/meminfo`
-- [ ] On the VPS: clone to `/opt/reel-bot`, install `uv` and `ffmpeg` (`apt install ffmpeg`), then `make tools`
+- [ ] On the VPS: clone to `/opt/reel-bot`, install `uv`, `ffmpeg` and the caption font (`apt install ffmpeg fonts-dejavu-core`), then `make tools`
 - [ ] Create a Relay client: `relay clients create reel-bot`; put the key in `.env` (never in git)
 - [x] Create the fables channel on the work Gmail (one channel, not three)
 - [ ] Create a Google Cloud project and enable YouTube Data API v3 and YouTube Analytics API; file the upload audit once the upload flow works
@@ -41,7 +41,7 @@ should be one small PR unless noted. Design details are in
 - [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
 - [x] `captions` stage: word timings from OpenAI transcription aligned to the script, caption cues and part timings (burned in by `render`)
 - [x] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests; each picture recorded in `assets`
-- [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
+- [x] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
 - [ ] `reel-bot make --story <id> --voice <file>` produces a finished MP4 and logs cost and time
 
 ## Phase 3: the daily loop through Relay

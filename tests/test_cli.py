@@ -145,3 +145,13 @@ def test_visuals_needs_a_key_then_a_script(
     env["OPENAI_API_KEY"] = "sk-test-not-a-real-key"
     assert main(["visuals", vid], env) == 3
     assert "no script" in capsys.readouterr().err
+
+
+def test_render_lists_the_missing_stages(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
+    assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
+    vid = capsys.readouterr().out.strip()
+    assert main(["render", vid], env) == 3
+    assert "still needs: voice, captions, visuals" in capsys.readouterr().err
