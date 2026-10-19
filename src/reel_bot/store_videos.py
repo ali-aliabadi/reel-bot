@@ -154,3 +154,25 @@ def spent_since(conn: sqlite3.Connection, since: datetime) -> float:
         "SELECT COALESCE(SUM(cost_usd), 0) FROM spend WHERE at >= ?", (since.isoformat(),)
     ).fetchone()
     return float(total)
+
+
+def add_post(
+    conn: sqlite3.Connection, video_id: str, platform: str, platform_id: str, at: datetime
+) -> None:
+    """Record that a video went out on a platform (refused without a recorded pick)."""
+    get_video(conn, video_id)
+    try:
+        conn.execute(
+            "INSERT INTO posts (video_id, platform, platform_id, posted_at) VALUES (?, ?, ?, ?)",
+            (video_id, platform, platform_id, at.isoformat()),
+        )
+    except sqlite3.IntegrityError as err:
+        raise PickError(f"video {video_id} can't be recorded as posted: {err}") from err
+
+
+def posts(conn: sqlite3.Connection, video_id: str) -> dict[str, str]:
+    """{platform: platform's ID for the post} for a video."""
+    rows = conn.execute(
+        "SELECT platform, platform_id FROM posts WHERE video_id = ?", (video_id,)
+    ).fetchall()
+    return {platform: pid for platform, pid in rows}

@@ -1,6 +1,7 @@
 """Command-line entry point. Subcommands are added here as roadmap items land."""
 
 import argparse
+import getpass
 import os
 import random
 import sqlite3
@@ -16,6 +17,8 @@ from reel_bot import (
     config,
     logs,
     pipeline,
+    publish,
+    publish_write,
     render_write,
     script_write,
     store,
@@ -24,6 +27,7 @@ from reel_bot import (
     videos,
     visuals_write,
     voice,
+    web,
 )
 
 EXIT_CONFIG = 2
@@ -69,7 +73,17 @@ def build_parser() -> argparse.ArgumentParser:
     mk = sub.add_parser("make", help="run every stage the video is ready for (cached)")
     mk.add_argument("video_id")
     mk.add_argument("--voice", type=Path, help="Tara's new take; redoes captions and render")
+    mk.add_argument("--publish", action="store_true", help="post once the render is done")
+    _publish_parsers(sub.add_parser)
     return parser
+
+
+def _publish_parsers(add: Callable[..., argparse.ArgumentParser]) -> None:
+    pu = add("publish", help="post a picked, rendered video (after reel-bot auth)")
+    pu.add_argument("video_id")
+    pu.add_argument("--to", nargs="+", choices=publish.PLATFORMS, help="default: all signed in")
+    au = add("auth", help="sign in to a platform once; saved next to the database")
+    au.add_argument("platform", choices=publish.PLATFORMS)
 
 
 def _show_config(env: Mapping[str, str]) -> int:
@@ -88,8 +102,12 @@ def _print_story(story: stories.Story) -> None:
     print(f"{story.id}\t{story.title} ({story.collection})")
 
 
+def _db_path(env: Mapping[str, str]) -> Path:
+    return Path(env.get("REEL_BOT_DB_PATH") or config.DEFAULT_DB_PATH)
+
+
 def _open(env: Mapping[str, str]) -> sqlite3.Connection:
-    conn = store.open_db(Path(env.get("REEL_BOT_DB_PATH") or config.DEFAULT_DB_PATH))
+    conn = store.open_db(_db_path(env))
     store.sync_stories(conn, stories.load_builtin())
     return conn
 
@@ -124,6 +142,7 @@ def _video(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> i
 
 
 Stage = Callable[[sqlite3.Connection, Path], str]
+PUBLISH_ERRORS = (publish.PublishError, web.WebError)
 
 
 def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
@@ -132,7 +151,7 @@ def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
     conn = _open(env)
     try:
         line = action(conn, out_dir)
-    except (*pipeline.ERRORS, store.StoreError, videos.VideoError, OSError) as err:
+    except (*pipeline.ERRORS, *PUBLISH_ERRORS, store.StoreError, videos.VideoError, OSError) as err:
         print(f"{name}: {err}", file=sys.stderr)
         return EXIT_REFUSED
     finally:
@@ -186,7 +205,13 @@ def _stages(
         lines = [f"{r.stage}\t${r.cost_usd:.3f}\t{r.seconds:.0f}s" for r in p.runs]
         lines.append(f"total\t${p.cost_usd():.3f}\t{p.seconds():.0f}s")
         lines.append(f"done: {p.render}" if p.render else f"waiting for {p.waiting}")
+        if p.render and args.publish:
+            lines.append(publish_(conn, out))
         return "\n".join(lines)
+
+    def publish_(conn: sqlite3.Connection, out: Path) -> str:
+        ctx = publish_write.Context(out, _tokens(env), clock, web.Web())
+        return publish_write.post(conn, vid, getattr(args, "to", None), env, ctx)
 
     return {
         "script": script_,
@@ -195,6 +220,7 @@ def _stages(
         "visuals": visuals_,
         "render": render_,
         "make": make_,
+        "publish": publish_,
     }
 
 
@@ -222,6 +248,24 @@ def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) ->
         conn.close()
 
 
+def _tokens(env: Mapping[str, str]) -> Path:
+    return _db_path(env).with_name(publish_write.TOKENS)
+
+
+def _auth(platform: str, env: Mapping[str, str], clock: Clock) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    ctx = publish_write.Context(out_dir, _tokens(env), clock, web.Web())
+    try:
+        publish_write.sign_in(
+            platform, env, ctx, lambda q, hide: (getpass.getpass if hide else input)(q)
+        )
+    except PUBLISH_ERRORS as err:
+        print(f"auth: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    print(f"signed in to {platform}; saved in {ctx.tokens}")
+    return 0
+
+
 def main(
     argv: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
@@ -238,6 +282,7 @@ def main(
         "config": lambda: _show_config(env),
         "stories": lambda: _stories(args, env, clock()),
         "video": lambda: _video(args, env, clock()),
+        "auth": lambda: _auth(args.platform, env, clock),
     }
     if args.command in handlers:
         return handlers[args.command]()

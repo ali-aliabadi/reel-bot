@@ -9,7 +9,7 @@ in the same PR.
 A Python CLI that turns an old fable into a finished vertical video for one
 adult-framed fables channel (Kalilah and Dimnah, Panchatantra, Rumi, Aesop),
 narrated by Tara. ali picks the story; Tara records the narration; reel-bot does
-the rest. It runs on ali's VPS (next to Relay; later on a schedule), keeps a log of every video
+the rest, up to posting on YouTube, Instagram and TikTok. It runs on ali's VPS (next to Relay; later on a schedule), keeps a log of every video
 in SQLite, and talks to ali and Tara through Relay.
 
 ## Principles
@@ -48,7 +48,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | visuals | script | `picture-<n>.png` per paragraph (1024x1536) and `visuals.json` (section, file, prompt) | OpenAI image API (`gpt-image-1`, medium quality, about $0.06 a picture); the prompt is the paragraph's scene plus the fixed style and a calm lower third for captions; the hook plays over the first picture and the lesson over the last; can run while Tara reads; a rerun after a failure draws only missing pictures; each picture is an `assets` row (source, licence) |
 | render | voice, captions, visuals | `render.mp4`: 1080x1920 H.264 (CRF 20) with AAC audio, 30 fps; `captions.ass` | ffmpeg at low priority (`nice`) on 2 threads; each picture pans slowly (alternately down and up) over a frame scaled 10% larger; cuts sit halfway through the pause between parts; the hook plays over the first picture and the lesson over the last; captions burned in with libass in DejaVu Sans Bold (white, black outline, 420 px above the bottom, clear of the Shorts buttons); the output is checked with ffprobe (size, audio, length within 0.5 s of the take); the font is recorded in `assets` |
 | review | render | Relay message with a 720p preview | Relay files are capped at 5 MB |
-| publish | render, metadata | platform video ID | Manual until the YouTube API audit passes |
+| publish | render, script, ali's pick | one post per platform (`posts` table) | `reel-bot publish <video id>` (or `make --publish`): refused without a recorded pick, in code and by a database trigger. YouTube: resumable upload, `containsSyntheticMedia`, locked private until Google's audit. Instagram Reels: Instagram API with Instagram Login from a development-mode Meta app (ali as tester; public, no App Review), upload from disk, AI disclosure in the caption (the API has no label). TikTok: Direct Post, `is_aigc`, `SELF_ONLY` until TikTok's audit. Title is the story's title plus `#shorts`; the description is the hook, the source, "Narrated by Tara; the pictures are made with AI" and tags. A platform that has the video is skipped, so a rerun posts only where it failed; calls that create a post are never retried |
 
 ## Data
 
@@ -56,10 +56,11 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 - `stories`: the catalog (id, tale, title, collection, source, source_ref), synced from `src/reel_bot/data/stories.json`.
 - `tales_used`: one row per tale ever told (tale is the primary key: the no-repeat rule), with the story, video ID and time.
-- `videos`: id (`vid_` + ULID), created_at, framing (`fable` or `lesson`), length (`short` or `long`), story_options (JSON list offered to ali), story_id, chosen_by, chosen_at. A CHECK makes the pick all or nothing; choosing also spends the tale in `tales_used`, in one transaction, and must be one of the options when options were offered. Platform video ID and posted_at come with publishing.
+- `videos`: id (`vid_` + ULID), created_at, framing (`fable` or `lesson`), length (`short` or `long`), story_options (JSON list offered to ali), story_id, chosen_by, chosen_at. A CHECK makes the pick all or nothing; choosing also spends the tale in `tales_used`, in one transaction, and must be one of the options when options were offered. Where it was posted is in `posts`.
 - `video_stages`: one row per (video, stage): output path relative to `out/<video id>/`, cost_usd, seconds, finished_at. A rerun reuses the output instead of paying again.
 - `assets`: video id, path (relative to `out/<video id>/`), kind (image, music, footage, font), source, licence, added_at.
 - `spend`: one row per paid API call (at, video id, what, cost_usd), written as soon as the call returns; the monthly cap reads it.
+- `posts`: video id, platform (`youtube`, `instagram`, `tiktok`), the platform's ID, posted_at; one row per platform; a trigger refuses a row for a video with no recorded pick.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 
 `reel-bot stories` lists the stories whose tale is still unused, `reel-bot stories pick` suggests 3 from different tales, and `reel-bot stories use <story id> <video id>` records a tale as told (refused if it already was). Record the hand-made videos this way too.
@@ -69,6 +70,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 `reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
 
 `reel-bot make <video id>` runs every stage the video is ready for and prints each stage's cost and time: with a picked story it writes the script (also as `read-this.txt` for Tara) and draws the pictures, then stops waiting for Tara's take; `reel-bot make <video id> --voice <file>` imports the take (a new take redoes captions and render) and finishes with `render.mp4`. Cached stages are reused and need no API key.
+
+`reel-bot auth youtube|instagram|tiktok` signs in once and saves the sign-in to `tokens.json` next to the database (owner-only, never printed). YouTube and TikTok print a sign-in address; after approving, paste the address the browser lands on (the page may not load; the code is in the address). Instagram asks for the token from the Meta app dashboard and refreshes it on each post once it is a day old. `reel-bot publish <video id> [--to youtube instagram tiktok]` posts to the named platforms, by default every signed-in one.
 
 `reel-bot render <video id>` writes `out/<video id>/render.mp4` once voice, captions and visuals are done, and lists whichever is missing; a rerun reuses it.
 
@@ -93,9 +96,13 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |
 | `OPENAI_API_KEY` | for `captions`, `visuals` | | OpenAI API key (transcription and pictures); sent only in the request header, never logged |
 | `REEL_BOT_MONTHLY_CAP_USD` | no | `20` | Most the paid APIs (Claude, OpenAI) may cost per calendar month, UTC. A call whose worst-case cost would pass it is refused before it is made; a second fence behind the providers' own limits |
+| `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` | for YouTube | | Google Cloud OAuth client ("Desktop app"); the secret is never logged |
+| `YOUTUBE_PRIVACY` | no | `public` | `public`, `unlisted` or `private` (YouTube forces private until the audit) |
+| `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` | for TikTok | | The TikTok app's keys and its registered https redirect URI |
+| `TIKTOK_PRIVACY` | no | `SELF_ONLY` | `PUBLIC_TO_EVERYONE` once TikTok has audited the app |
 | `REEL_BOT_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning` or `error`; JSON lines on stderr, keys and Relay bodies redacted |
 
-`reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.
+`reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Platform sign-ins are not env vars: `reel-bot auth` saves them to `tokens.json`.
 
 ## Quality tooling
 

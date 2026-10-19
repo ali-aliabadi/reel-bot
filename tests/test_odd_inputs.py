@@ -8,16 +8,29 @@ import itertools
 import json
 import random
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from reel_bot import captions, captions_write, render, script, visuals_write
+from reel_bot import (
+    captions,
+    captions_write,
+    instagram,
+    publish,
+    render,
+    script,
+    tiktok,
+    visuals_write,
+    youtube,
+)
 from reel_bot.captions import Word
+from reel_bot.publish import Post, PublishError
 from reel_bot.stories import Story
 from reel_bot.videos import Video
 from reel_bot.visuals import VisualsError
+from reel_bot.web import Reply, Request
 
 CASES = 400
 FOX = Story("aesop-fox", "fox-and-grapes", "The Fox and the Grapes", "Aesop", "Townsend", "p. 1")
@@ -146,3 +159,94 @@ def test_timeline_refuses_rather_than_making_empty_shots() -> None:
             continue
         assert all(s.seconds > 0 for s in shots)
         assert shots[0].start == 0
+
+
+class OddNet:
+    """Answers a platform flow with its good replies, one of them swapped for an odd one."""
+
+    def __init__(self, bodies: list[bytes]) -> None:
+        self.bodies = bodies
+
+    def send(self, req: Request) -> Reply:
+        body = self.bodies.pop(0) if self.bodies else b"{}"
+        return Reply(200, {"location": "https://www.googleapis.com/u"}, body)
+
+    def wait(self, seconds: float) -> None:
+        pass
+
+
+def _tt(data: dict[str, Any]) -> dict[str, Any]:
+    return {"error": {"code": "ok"}, "data": data}
+
+
+YT = youtube.App("c", "s")
+TT = tiktok.App("k", "s", "https://example.test/cb")
+IG = {"access_token": "a", "user_id": "1", "saved_at": "2026-10-22T09:00:00+00:00"}
+POST = Post("t", "d")
+FLOWS: list[tuple[str, Callable[[OddNet, Path], object], list[dict[str, Any]]]] = [
+    (
+        "youtube",
+        lambda n, mp4: youtube.upload(
+            n, YT, youtube.access(n, YT, {"refresh_token": "r"})[0], mp4, POST
+        ),
+        [{"access_token": "a"}, {}, {"id": "abc"}],
+    ),
+    (
+        "instagram",
+        lambda n, mp4: (
+            instagram.sign_in(n, "tok", VIDEO.created_at),
+            instagram.access(n, IG, VIDEO.created_at + timedelta(days=2)),
+            instagram.upload(n, "a", IG, mp4, POST),
+        ),
+        [
+            {"user_id": "1"},
+            {"access_token": "b"},
+            {"id": "1"},
+            {},
+            {"status_code": "FINISHED"},
+            {"id": "2"},
+        ],
+    ),
+    (
+        "tiktok",
+        lambda n, mp4: (
+            tiktok.access(n, TT, {"refresh_token": "r"}),
+            tiktok.upload(n, TT, "a", mp4, POST),
+        ),
+        [
+            {"access_token": "a", "refresh_token": "r"},
+            _tt({"privacy_level_options": ["SELF_ONLY"]}),
+            _tt({"publish_id": "p", "upload_url": "https://open-upload.tiktokapis.com/x"}),
+            {},
+            _tt({"status": "PUBLISH_COMPLETE"}),
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("flow", "good"), [(f, g) for _, f, g in FLOWS], ids=[n for n, _, _ in FLOWS]
+)
+def test_platform_replies_raise_only_publish_errors(
+    tmp_path: Path, flow: Callable[[OddNet, Path], object], good: list[dict[str, Any]]
+) -> None:
+    mp4 = tmp_path / "render.mp4"
+    mp4.write_bytes(b"mp4")
+    flow(OddNet([json.dumps(g).encode() for g in good]), mp4)  # the good replies post
+    rng = random.Random(17)
+    for _ in range(CASES // 10):
+        i = rng.randrange(len(good))
+        for odd_reply in replies(rng, good[i] or {"k": 1}):
+            bodies = [json.dumps(g).encode() for g in good]
+            bodies[i] = odd_reply
+            with contextlib.suppress(PublishError):
+                flow(OddNet(bodies), mp4)
+
+
+def test_pasted_sign_in_addresses_raise_only_publish_errors() -> None:
+    rng = random.Random(19)
+    parts = ["http://", "[", "::1", "?", "state=s", "&", "code=", "%", "#", "\x00", "é", "error=x"]
+    for _ in range(CASES):
+        pasted = "".join(rng.choice(parts) for _ in range(rng.randint(0, 8)))
+        with contextlib.suppress(PublishError):
+            assert publish.code_from(pasted, "s")

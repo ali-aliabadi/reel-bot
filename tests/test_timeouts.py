@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from reel_bot import openai_api, render, render_write, voice
+from reel_bot import openai_api, render, render_write, voice, web
 
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which("ffmpeg") is None, reason="ffmpeg not installed; the process timeout tests need it"
@@ -70,3 +70,15 @@ def test_voice_ffmpeg_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(voice, "TIMEOUT_S", 0.5)
     with pytest.raises(voice.VoiceError, match="took over"):
         voice._run(ENDLESS)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_platform_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str) -> None:
+    slept: list[float] = []
+    net = web.Web(timeout_s=0.2, sleep=slept.append)
+    with pytest.raises(web.WebError, match="failed"):
+        net.send(web.Request("POST", slow_api + "/x", "test call"))
+    assert slept == [2.0, 4.0]  # three attempts in all
+    slept.clear()
+    with pytest.raises(web.WebError, match="failed"):
+        net.send(web.Request("POST", slow_api + "/x", "a post", retry=False))
+    assert slept == []  # a call that creates a post is tried once

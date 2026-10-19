@@ -73,6 +73,22 @@ MIGRATIONS = (
     );
     CREATE INDEX spend_at ON spend (at);
     """,
+    """
+    -- One row per platform a video went out on.
+    CREATE TABLE posts (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        platform TEXT NOT NULL CHECK (platform IN ('youtube', 'instagram', 'tiktok')),
+        platform_id TEXT NOT NULL,
+        posted_at TEXT NOT NULL,
+        PRIMARY KEY (video_id, platform)
+    );
+    -- The human pick rule, in the database too: no post without a recorded pick.
+    CREATE TRIGGER posts_need_a_pick BEFORE INSERT ON posts
+    WHEN (SELECT chosen_at FROM videos WHERE id = NEW.video_id) IS NULL
+    BEGIN
+        SELECT RAISE(ABORT, 'no recorded story pick for this video');
+    END;
+    """,
 )
 
 
