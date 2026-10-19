@@ -72,3 +72,29 @@ def test_stories_pick(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 def test_bad_log_level_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["version"], env={"REEL_BOT_LOG_LEVEL": "loud"}) == 2
     assert "REEL_BOT_LOG_LEVEL" in capsys.readouterr().err
+
+
+def test_video_new_choose_show(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
+
+    def clock() -> datetime:
+        return datetime(2026, 10, 22, 9, tzinfo=UTC)
+
+    assert main(["video", "new", "--framing", "lesson", "--length", "long"], env, clock) == 0
+    vid = capsys.readouterr().out.strip()
+    assert vid.startswith("vid_")
+    pick = ["video", "choose", vid, "aesop-fox-and-grapes", "--by", "ali"]
+    assert main(pick, env, clock) == 0
+    assert main(["video", "show", vid], env, clock) == 0
+    out = capsys.readouterr().out
+    assert "framing=lesson" in out
+    assert "story=aesop-fox-and-grapes" in out
+    assert "chosen by ali at 2026-10-22T09:00:00+00:00" in out
+    assert main(pick, env, clock) == 3
+    assert "already has its story" in capsys.readouterr().err
+
+
+def test_video_show_unknown(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
+    assert main(["video", "show", "vid_nope"], env) == 3
+    assert "no video" in capsys.readouterr().err

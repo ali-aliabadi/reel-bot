@@ -69,7 +69,7 @@ Small files keep agent context focused and diffs reviewable.
 
 ## Conventions
 
-- **Stages:** the pipeline is a chain of stages (stories → script → voice → captions → visuals → render → publish). Each stage is a module with a pure core and a thin I/O edge, takes the previous stage's dataclass and returns its own. Only `store` writes SQL.
+- **Stages:** the pipeline is a chain of stages (stories → script → voice → captions → visuals → render → publish). Each stage is a module with a pure core and a thin I/O edge, takes the previous stage's dataclass and returns its own. Only the `store` modules (`store.py`, `store_videos.py`, …) write SQL.
 - **Experiments:** framing and length are per-video settings recorded on the video row; stages never branch on them by name, they read the setting.
 - **Typing:** pyright strict. Dataclasses (`frozen=True`) for data passed between stages; no bare dicts across module boundaries.
 - **Errors:** raise specific exceptions with context (`raise RenderError("ffmpeg exited 1") from err`); never swallow. External calls (models, TTS, Relay, YouTube) have timeouts and bounded retries.

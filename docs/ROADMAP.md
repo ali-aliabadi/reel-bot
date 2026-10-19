@@ -34,7 +34,7 @@ should be one small PR unless noted. Design details are in
 ## Phase 2: one video end to end (manual pick)
 
 - [x] Story catalog with versions grouped by tale; SQLite store; `reel-bot stories` (list, pick, use); no tale told twice
-- [ ] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
+- [x] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
 - [ ] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
 - [ ] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
 - [ ] `captions` stage: Whisper word timings on the Mac, burned-in captions
