@@ -8,6 +8,7 @@ recorded captions stage with its file on disk is reused without another call.
 
 import json
 import logging
+import math
 import sqlite3
 import time
 from collections.abc import Callable
@@ -50,9 +51,12 @@ def parse(raw: bytes) -> Heard:
             captions.Word(str(w["word"]).strip(), float(w["start"]), float(w["end"]))
             for w in cast(list[dict[str, Any]], data.get("words") or [])
         )
-        return Heard(words, float(data["duration"]))
-    except (ValueError, KeyError, TypeError) as err:
+        seconds = float(data["duration"])
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError, RecursionError) as err:
         raise captions.CaptionsError("the transcription reply has no word times") from err
+    if not 0 <= seconds < math.inf or any(not 0 <= w.start <= w.end < math.inf for w in words):
+        raise captions.CaptionsError("the transcription reply has impossible word times")
+    return Heard(words, seconds)
 
 
 def openai(

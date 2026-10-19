@@ -11,6 +11,7 @@ from pathlib import Path
 
 from reel_bot import (
     __version__,
+    budget,
     captions_write,
     config,
     logs,
@@ -140,12 +141,17 @@ def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
     return 0
 
 
-def _stages(args: argparse.Namespace, env: Mapping[str, str], clock: Clock) -> dict[str, Stage]:
+def _stages(
+    args: argparse.Namespace, env: Mapping[str, str], clock: Clock, cap: float
+) -> dict[str, Stage]:
     vid = getattr(args, "video_id", "")
     key = env.get("OPENAI_API_KEY", "").strip()
 
+    def guard(conn: sqlite3.Connection) -> budget.Budget:
+        return budget.Budget(conn, vid, cap, clock)
+
     def script_(conn: sqlite3.Connection, out: Path) -> str:
-        s = script_write.write(conn, out, vid, script_write.claude(), clock)
+        s = script_write.write(conn, out, vid, guard(conn).claude(script_write.claude()), clock)
         return f"{out / vid / script_write.FILENAME}\t{s.words()} words"
 
     def voice_(conn: sqlite3.Connection, out: Path) -> str:
@@ -153,12 +159,14 @@ def _stages(args: argparse.Namespace, env: Mapping[str, str], clock: Clock) -> d
         return f"{v.path}\t{v.seconds:.1f} s"
 
     def captions_(conn: sqlite3.Connection, out: Path) -> str:
-        c = captions_write.make(conn, out, vid, captions_write.openai(key), clock)
+        transcribe = guard(conn).transcribe(captions_write.openai(key))
+        c = captions_write.make(conn, out, vid, transcribe, clock)
         path = out / vid / captions_write.FILENAME
         return f"{path}\t{len(c.cues)} captions\t{c.matched:.0%} of the script heard"
 
     def visuals_(conn: sqlite3.Connection, out: Path) -> str:
-        v = visuals_write.make(conn, out, vid, visuals_write.openai(key), clock)
+        draw = guard(conn).draw(visuals_write.openai(key))
+        v = visuals_write.make(conn, out, vid, draw, clock)
         return f"{out / vid / visuals_write.FILENAME}\t{len(v.pictures)} pictures"
 
     def render_(conn: sqlite3.Connection, out: Path) -> str:
@@ -166,12 +174,13 @@ def _stages(args: argparse.Namespace, env: Mapping[str, str], clock: Clock) -> d
         return f"{r.path}\t{r.seconds:.1f} s"
 
     def make_(conn: sqlite3.Connection, out: Path) -> str:
+        b = guard(conn)
         ctx = pipeline.Context(
             out_dir=out,
             clock=clock,
-            claude=script_write.claude,
-            transcribe=lambda: captions_write.openai(key),
-            draw=lambda: visuals_write.openai(key),
+            claude=lambda: b.claude(script_write.claude()),
+            transcribe=lambda: b.transcribe(captions_write.openai(key)),
+            draw=lambda: b.draw(visuals_write.openai(key)),
         )
         p = pipeline.advance(conn, vid, args.voice, ctx)
         lines = [f"{r.stage}\t${r.cost_usd:.3f}\t{r.seconds:.0f}s" for r in p.runs]
@@ -232,8 +241,12 @@ def main(
     }
     if args.command in handlers:
         return handlers[args.command]()
-    stages = _stages(args, env, clock)
-    if args.command in stages:
-        return _stage(env, args.command, stages[args.command])
-    print(__version__)
-    return 0
+    if args.command == "version":
+        print(__version__)
+        return 0
+    try:
+        cap = config.monthly_cap(env)
+    except config.ConfigError as err:
+        print(f"config: {err.problems[0]}", file=sys.stderr)
+        return EXIT_CONFIG
+    return _stage(env, args.command, _stages(args, env, clock, cap)[args.command])

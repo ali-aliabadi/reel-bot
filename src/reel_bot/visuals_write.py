@@ -45,7 +45,7 @@ def parse(raw: bytes) -> bytes:
     try:
         data = cast(dict[str, Any], json.loads(raw))
         return base64.b64decode(cast(list[dict[str, str]], data["data"])[0]["b64_json"])
-    except (ValueError, KeyError, IndexError, TypeError) as err:
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError, RecursionError) as err:
         raise visuals.VisualsError("the image reply has no picture") from err
 
 

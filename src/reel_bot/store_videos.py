@@ -137,3 +137,20 @@ def assets(conn: sqlite3.Connection, video_id: str) -> list[Asset]:
         (video_id,),
     ).fetchall()
     return [Asset(r[0], r[1], r[2], r[3], datetime.fromisoformat(r[4])) for r in rows]
+
+
+def add_spend(
+    conn: sqlite3.Connection, video_id: str, what: str, cost_usd: float, at: datetime
+) -> None:
+    conn.execute(
+        "INSERT INTO spend (at, video_id, what, cost_usd) VALUES (?, ?, ?, ?)",
+        (at.isoformat(), video_id, what, cost_usd),
+    )
+
+
+def spent_since(conn: sqlite3.Connection, since: datetime) -> float:
+    """US dollars of paid calls at or after `since` (UTC ISO strings sort by time)."""
+    (total,) = conn.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0) FROM spend WHERE at >= ?", (since.isoformat(),)
+    ).fetchone()
+    return float(total)

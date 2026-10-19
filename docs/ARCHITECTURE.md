@@ -59,6 +59,7 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 - `videos`: id (`vid_` + ULID), created_at, framing (`fable` or `lesson`), length (`short` or `long`), story_options (JSON list offered to ali), story_id, chosen_by, chosen_at. A CHECK makes the pick all or nothing; choosing also spends the tale in `tales_used`, in one transaction, and must be one of the options when options were offered. Platform video ID and posted_at come with publishing.
 - `video_stages`: one row per (video, stage): output path relative to `out/<video id>/`, cost_usd, seconds, finished_at. A rerun reuses the output instead of paying again.
 - `assets`: video id, path (relative to `out/<video id>/`), kind (image, music, footage, font), source, licence, added_at.
+- `spend`: one row per paid API call (at, video id, what, cost_usd), written as soon as the call returns; the monthly cap reads it.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 
 `reel-bot stories` lists the stories whose tale is still unused, `reel-bot stories pick` suggests 3 from different tales, and `reel-bot stories use <story id> <video id>` records a tale as told (refused if it already was). Record the hand-made videos this way too.
@@ -91,6 +92,7 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
 | `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |
 | `OPENAI_API_KEY` | for `captions`, `visuals` | | OpenAI API key (transcription and pictures); sent only in the request header, never logged |
+| `REEL_BOT_MONTHLY_CAP_USD` | no | `20` | Most the paid APIs (Claude, OpenAI) may cost per calendar month, UTC. A call whose worst-case cost would pass it is refused before it is made; a second fence behind the providers' own limits |
 | `REEL_BOT_LOG_LEVEL` | no | `info` | `debug`, `info`, `warning` or `error`; JSON lines on stderr, keys and Relay bodies redacted |
 
 `reel-bot config` (or `make run ARGS=config`) checks these and prints them without the key. Model, voice and YouTube credentials are added to this table by the roadmap items that need them.

@@ -37,6 +37,7 @@ Also run: `make sec` (pip-audit, gitleaks) and `make lint` (includes ruff's band
 ## 4. Cost and runaway work
 
 - [ ] Every paid API call (model, TTS, image) has a timeout, bounded retries and logs its cost to the video row.
+- [ ] Every paid call goes through a `budget.Budget` guard (refused past `REEL_BOT_MONTHLY_CAP_USD`, cost recorded in `spend` as soon as it returns).
 - [ ] Reruns reuse cached stage output instead of paying again.
 - [ ] Loops over stories, paragraphs or videos have a hard upper bound; a daily run makes at most the configured number of videos.
 
@@ -46,6 +47,8 @@ Also run: `make sec` (pip-audit, gitleaks) and `make lint` (includes ruff's band
 - [ ] File paths are built under `REEL_BOT_OUT_DIR` from IDs, never from model output or answer text.
 - [ ] SQL uses parameters; no string-built queries.
 - [ ] Outbound HTTP uses timeouts; provider URLs come from code or config, never from model output.
+- [ ] Every new external process or network call has a test that it gives up after its timeout (`tests/test_timeouts.py`).
+- [ ] Every new parser of outside input (model, API or Relay replies, recordings) is in `tests/test_odd_inputs.py` (or has its own odd-input tests): it raises only its own error, never `KeyError`, `AttributeError` or `RecursionError`.
 
 ## 6. CI and supply chain
 
