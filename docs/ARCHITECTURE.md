@@ -43,7 +43,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | --- | --- | --- | --- |
 | stories | catalog, tales already used | 3 candidates from different unused tales | One Relay `question`; the pick is recorded |
 | script | chosen story | `script.json`: hook, 3-6 paragraphs each with a picture prompt, the lesson (lesson framing only), source | Claude Opus 5.5 with structured output and refusal fallback; the checker (word budget by length, paragraphs, hook, lesson by framing) allows one retry with its feedback; cost recorded on the stage row |
-| voice | script | Tara's recording, cleaned and loudness-normalized | Needs voice-note answers in Relay (proposed, not built) |
+| voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg; a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
 | captions | voice | word timings and caption track | Whisper on the Mac; burned in |
 | visuals | script, timings | one picture per paragraph | Image source pending ali's choice (OpenAI API or FLUX on the Mac) |
 | render | everything above | 1080x1920 H.264 MP4, 30 fps | ffmpeg, slow zoom per picture, cuts at pauses |
@@ -66,6 +66,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 `reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
 
 `reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
+
+`reel-bot voice <video id> <recording>` cleans Tara's take into `out/<video id>/voice.wav` once the script exists. The Relay flow (phase 3) will call the same import with the voice note it downloads.
 
 Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which accepts only a valid video ID), git-ignored.
 

@@ -19,6 +19,7 @@ from reel_bot import (
     store_videos,
     stories,
     videos,
+    voice,
 )
 
 EXIT_CONFIG = 2
@@ -51,6 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     choose.add_argument("--by", required=True, help="who chose, e.g. ali")
     sc = sub.add_parser("script", help="write a picked video's script with Claude (cached)")
     sc.add_argument("video_id")
+    vo = sub.add_parser("voice", help="import Tara's recording: clean it and set its loudness")
+    vo.add_argument("video_id")
+    vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
     return parser
 
 
@@ -119,6 +123,20 @@ def _script(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[]
     return 0
 
 
+def _voice(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    conn = _open(env)
+    try:
+        v = voice.import_take(conn, out_dir, args.video_id, args.recording, clock)
+    except (voice.VoiceError, store.StoreError, videos.VideoError) as err:
+        print(f"voice: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        conn.close()
+    print(f"{v.path}\t{v.seconds:.1f} s")
+    return 0
+
+
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
     conn = _open(env)
     try:
@@ -155,13 +173,14 @@ def main(
     except ValueError as err:
         print(f"config: REEL_BOT_LOG_LEVEL: {err}", file=sys.stderr)
         return EXIT_CONFIG
-    if args.command == "config":
-        return _show_config(env)
-    if args.command == "stories":
-        return _stories(args, env, clock())
-    if args.command == "video":
-        return _video(args, env, clock())
-    if args.command == "script":
-        return _script(args, env, clock)
+    handlers: dict[str, Callable[[], int]] = {
+        "config": lambda: _show_config(env),
+        "stories": lambda: _stories(args, env, clock()),
+        "video": lambda: _video(args, env, clock()),
+        "script": lambda: _script(args, env, clock),
+        "voice": lambda: _voice(args, env, clock),
+    }
+    if args.command in handlers:
+        return handlers[args.command]()
     print(__version__)
     return 0
