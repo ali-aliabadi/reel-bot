@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Pipeline that writes, renders and posts short-form videos, with one human pick per video."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "anthropic>=1.15.0",
+]
 
 [project.scripts]
 reel-bot = "reel_bot.cli:main"

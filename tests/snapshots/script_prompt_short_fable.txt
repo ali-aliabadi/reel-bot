@@ -1,0 +1,5 @@
+Tale: The Monkey and the Crocodile (Panchatantra).
+Retell it from: Arthur W. Ryder, The Panchatantra (1925), Book IV.
+Length: 95 to 120 spoken words in total, hook and lesson included.
+Paragraphs: 3 to 6. Hook: at most 14 words.
+Write no lesson after the tale: set "lesson" to an empty string.

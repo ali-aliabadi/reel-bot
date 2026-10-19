@@ -9,7 +9,17 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from reel_bot import __version__, config, logs, store, store_videos, stories, videos
+from reel_bot import (
+    __version__,
+    config,
+    logs,
+    script,
+    script_write,
+    store,
+    store_videos,
+    stories,
+    videos,
+)
 
 EXIT_CONFIG = 2
 EXIT_REFUSED = 3
@@ -39,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     choose.add_argument("video_id")
     choose.add_argument("story_id")
     choose.add_argument("--by", required=True, help="who chose, e.g. ali")
+    sc = sub.add_parser("script", help="write a picked video's script with Claude (cached)")
+    sc.add_argument("video_id")
     return parser
 
 
@@ -93,6 +105,20 @@ def _video(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> i
     return 0
 
 
+def _script(args: argparse.Namespace, env: Mapping[str, str], clock: Callable[[], datetime]) -> int:
+    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
+    conn = _open(env)
+    try:
+        s = script_write.write(conn, out_dir, args.video_id, script_write.claude(), clock)
+    except (script.ScriptError, store.StoreError, videos.VideoError) as err:
+        print(f"script: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    finally:
+        conn.close()
+    print(f"{out_dir / args.video_id / script_write.FILENAME}\t{s.words()} words")
+    return 0
+
+
 def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> int:
     conn = _open(env)
     try:
@@ -135,5 +161,7 @@ def main(
         return _stories(args, env, clock())
     if args.command == "video":
         return _video(args, env, clock())
+    if args.command == "script":
+        return _script(args, env, clock)
     print(__version__)
     return 0

@@ -24,6 +24,9 @@ brew install uv ffmpeg     # once
 make tools                 # Python 3.12, locked dev tools, gitleaks
 cp .env.example .env       # then fill in the keys
 make run ARGS=config    # checks .env, never prints the key
+make run ARGS="video new --framing fable --length short"   # prints a video ID
+make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
+make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json
 make check                 # before every commit
 ```
 
