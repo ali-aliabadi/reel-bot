@@ -46,7 +46,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg; a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
 | captions | script, voice | `captions.json`: each script word with its time, short caption cues (up to 3 words or 16 characters, split at punctuation and pauses), and when each part (hook, paragraphs, lesson) is spoken | OpenAI transcription (`whisper-1`, word timestamps, about $0.006 a minute); the script's words are kept and take their times from the matching heard words, unmatched ones are spread across the gap; under 50% matched is refused as the wrong take, under 85% warns; the render stage burns the cues in |
 | visuals | script | `picture-<n>.png` per paragraph (1024x1536) and `visuals.json` (section, file, prompt) | OpenAI image API (`gpt-image-1`, medium quality, about $0.06 a picture); the prompt is the paragraph's scene plus the fixed style and a calm lower third for captions; the hook plays over the first picture and the lesson over the last; can run while Tara reads; a rerun after a failure draws only missing pictures; each picture is an `assets` row (source, licence) |
-| render | everything above | 1080x1920 H.264 MP4, 30 fps | ffmpeg, slow zoom per picture, cuts at pauses |
+| render | voice, captions, visuals | `render.mp4`: 1080x1920 H.264 (CRF 20) with AAC audio, 30 fps; `captions.ass` | ffmpeg at low priority (`nice`) on 2 threads; each picture pans slowly (alternately down and up) over a frame scaled 10% larger; cuts sit halfway through the pause between parts; the hook plays over the first picture and the lesson over the last; captions burned in with libass in DejaVu Sans Bold (white, black outline, 420 px above the bottom, clear of the Shorts buttons); the output is checked with ffprobe (size, audio, length within 0.5 s of the take); the font is recorded in `assets` |
 | review | render | Relay message with a 720p preview | Relay files are capped at 5 MB |
 | publish | render, metadata | platform video ID | Manual until the YouTube API audit passes |
 
@@ -66,6 +66,8 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 `reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
 
 `reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
+
+`reel-bot render <video id>` writes `out/<video id>/render.mp4` once voice, captions and visuals are done, and lists whichever is missing; a rerun reuses it.
 
 `reel-bot visuals <video id>` draws `out/<video id>/picture-<n>.png` once the script exists; a rerun reuses them.
 
@@ -101,5 +103,5 @@ Everything runs through the Makefile, locally and in CI. Python tools are pinned
 - **pyright** in strict mode.
 - **File length:** `scripts/check-file-length.sh` fails on `.py` files over 300 lines (tests 500).
 - **Other checks:** `uv lock --check`, `actionlint` for workflows, `pip-audit`, `gitleaks` over the history.
-- **CI** (`ci.yml`): `make check` on every PR and push to `master`; actions pinned by SHA; `contents: read` only.
+- **CI** (`ci.yml`): `make check` on every PR and push to `master`, with ffmpeg installed so the voice and render smoke tests run; actions pinned by SHA; `contents: read` only.
 - **Dependabot:** weekly grouped updates for uv and GitHub Actions.
