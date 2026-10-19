@@ -11,10 +11,10 @@ should be one small PR unless noted. Design details are in
 - [ ] Protect `master` (require PRs and the `make check` status)
 - [ ] Install `uv` and `ffmpeg` on the Mac (`brew install uv ffmpeg`), then `make tools`
 - [ ] Create a Relay client: `relay clients create reel-bot`; put the key in `.env` (never in git)
-- [ ] Create three YouTube channels (brand accounts) for arms A, B and C
-- [ ] Create a Google Cloud project, enable YouTube Data API v3 and YouTube Analytics API, and file the API audit for uploads
+- [x] Create the fables channel on the work Gmail (one channel, not three)
+- [ ] Create a Google Cloud project and enable YouTube Data API v3 and YouTube Analytics API; file the upload audit once the upload flow works
 - [ ] Anthropic API key in `.env` for scripts
-- [ ] Pick the TTS provider (one voice per arm) and put its key in `.env`
+- [ ] Choose the picture source (OpenAI image API or FLUX on the Mac) and put any key in `.env`
 
 ## Phase 1: skeleton and tooling
 
@@ -31,36 +31,36 @@ should be one small PR unless noted. Design details are in
 - [ ] JSON logging setup with a redaction helper for keys and Relay bodies
 - [ ] SessionStart hook so cloud sessions get uv, ffmpeg and gitleaks
 
-## Phase 2: one video end to end (arm A first, manual pick)
+## Phase 2: one video end to end (manual pick)
 
-- [ ] SQLite store: open helper, `videos` and `assets` tables, migrations run on startup
-- [ ] Video IDs (`vid_` + ULID) and the on-disk cache under `out/<id>/`
-- [ ] `script` stage: Claude call from a chosen angle; snapshot tests with a fake client
-- [ ] `voice` stage behind a small interface, with a fake for tests
-- [ ] `captions` stage from word timings
-- [ ] `render` stage: ffmpeg 1080x1920 30 fps; render smoke test with ffprobe (skips without ffmpeg)
-- [ ] Arm A `visuals`: animated chart from a CSV
-- [ ] `reel-bot make --arm A --angle "..."` produces a finished MP4 and logs cost and time
+- [x] Story catalog with versions grouped by tale; SQLite store; `reel-bot stories` (list, pick, use); no tale told twice
+- [ ] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
+- [ ] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
+- [ ] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
+- [ ] `captions` stage: Whisper word timings on the Mac, burned-in captions
+- [ ] `visuals` stage behind a small interface (image API or FLUX), with a fake for tests
+- [ ] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at pauses; render smoke test with ffprobe (skips without ffmpeg)
+- [ ] `reel-bot make --story <id> --voice <file>` produces a finished MP4 and logs cost and time
 
 ## Phase 3: the daily loop through Relay
 
-- [ ] `angles` stage per arm: 3 candidates from the arm's sources
-- [ ] Morning run: one Relay `question` per arm; record the pick (who, when, which); skip the arm at 11:00 with no answer
-- [ ] Arm B `visuals` (AI images, slow pans) and fact sources per claim
-- [ ] Arm C `visuals` (screenshots and captions) and the item's source URL
-- [ ] "Render ready" Relay message per video; failure alert with stage and last error lines
+- [ ] Relay: voice-note answers to a question (in the relay repo, if ali approves)
+- [ ] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
+- [ ] Send the script to Tara through Relay and wait for her voice-note answer
+- [ ] "Render ready" Relay message with a 720p preview; failure alert with stage and last error lines
 - [ ] Scheduled run on the Mac (launchd) at a fixed hour
+- [ ] Grow the catalog: every tale in the four public-domain sources, with source references
 
-## Phase 4: metrics and the decision
+## Phase 4: metrics and decisions
 
 - [ ] `metrics` table; nightly YouTube Analytics pull for videos at 72 hours
 - [ ] `reel-bot metrics add` for viewed-vs-swiped copied from Studio
-- [ ] Morning Relay report: one table per arm (videos, median views, retention, subs per 1k)
-- [ ] 25 Oct cut check report and 4 Nov decision report from the same data
+- [ ] Morning Relay report: videos, median views, retention, subs per 1k, split by framing and length
+- [ ] Weekly report comparing framing (fable alone vs with a lesson) and length (45 s vs 61 to 90 s)
 
-## Later (after 4 Nov, for the winning arm)
+## Later
 
 - [ ] Auto-publish to YouTube once the API audit passes, still gated on a recorded pick
-- [ ] TikTok cuts over 60 seconds and the Content Posting API (after its audit)
+- [ ] TikTok and Instagram Reels, and the TikTok Content Posting API (after its audit)
 - [ ] Run on the VPS with a deploy workflow like relay's
-- [ ] A/B hooks inside the winning arm
+- [ ] A/B hooks

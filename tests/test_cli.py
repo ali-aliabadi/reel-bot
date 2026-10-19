@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from pathlib import Path
+
 import pytest
 
 from reel_bot import __version__
@@ -29,3 +32,38 @@ def test_config_lists_problems_and_exits_2(capsys: pytest.CaptureFixture[str]) -
     err = capsys.readouterr().err
     assert "RELAY_URL is required" in err
     assert "RELAY_API_KEY is required" in err
+
+
+def test_stories_use_refuses_a_tale_twice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
+    assert main(["stories", "list"], env, lambda: datetime(2026, 10, 22, tzinfo=UTC)) == 0
+    assert "kalilah-lion-and-hare" in capsys.readouterr().out
+
+    assert (
+        main(
+            ["stories", "use", "kalilah-lion-and-hare", "vid_1"],
+            env,
+            lambda: datetime(2026, 10, 22, tzinfo=UTC),
+        )
+        == 0
+    )
+    assert (
+        main(
+            ["stories", "use", "panchatantra-lion-and-hare", "vid_2"],
+            env,
+            lambda: datetime(2026, 10, 22, tzinfo=UTC),
+        )
+        == 3
+    )
+    assert "already told in video vid_1" in capsys.readouterr().err
+
+    assert main(["stories"], env, lambda: datetime(2026, 10, 22, tzinfo=UTC)) == 0
+    assert "lion-and-hare" not in capsys.readouterr().out
+
+
+def test_stories_pick(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db")}
+    assert main(["stories", "pick", "-n", "2"], env) == 0
+    assert len(capsys.readouterr().out.splitlines()) == 2
