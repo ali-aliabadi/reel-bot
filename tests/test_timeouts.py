@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from reel_bot import openai_api, render, render_write, voice, web
+from reel_bot import openai_api, relay_api, render, render_write, voice, web
 
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which("ffmpeg") is None, reason="ffmpeg not installed; the process timeout tests need it"
@@ -82,3 +82,11 @@ def test_platform_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: s
     with pytest.raises(web.WebError, match="failed"):
         net.send(web.Request("POST", slow_api + "/x", "a post", retry=False))
     assert slept == []  # a call that creates a post is tried once
+
+
+def test_relay_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str) -> None:
+    slept: list[float] = []
+    relay = relay_api.Client(slow_api, "k", "reel-bot", web.Web(0.2, slept.append))
+    with pytest.raises(relay_api.RelayError, match="failed"):
+        relay.send({"to": ["ali"], "text": "hi"}, "key-1")
+    assert slept == [2.0, 4.0]  # three attempts; the idempotency key makes retries safe

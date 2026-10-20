@@ -89,6 +89,19 @@ MIGRATIONS = (
         SELECT RAISE(ABORT, 'no recorded story pick for this video');
     END;
     """,
+    """
+    -- Relay messages that wait for an answer: one per video and purpose (e.g. the pick).
+    CREATE TABLE relay_messages (
+        message_id TEXT PRIMARY KEY,
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        purpose TEXT NOT NULL,
+        sent_at TEXT NOT NULL,
+        closed_at TEXT,
+        outcome TEXT,  -- how it ended (picked, skipped, expired); never the answer's text
+        UNIQUE (video_id, purpose),
+        CHECK ((closed_at IS NULL) = (outcome IS NULL))
+    );
+    """,
 )
 
 

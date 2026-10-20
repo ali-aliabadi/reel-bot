@@ -41,7 +41,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 
 | Stage | In | Out | Notes |
 | --- | --- | --- | --- |
-| stories | catalog, tales already used | 3 candidates from different unused tales | One Relay `question`; the pick is recorded |
+| stories | catalog, tales already used | 3 candidates from different unused tales | `reel-bot morning`: makes the day's video (framing and length rotate with the number of picked videos: fable/short, lesson/short, fable/long, lesson/long) and sends one Relay `question` to `RELAY_USER` with a numbered button per story and "Skip today"; the idempotency key is the video ID, so a rerun never asks twice. `reel-bot morning --check` (safe on a frequent timer) only reads the answer: a tapped story is recorded as the pick (who tapped it, when, which option) and spends the tale; "Skip today" or a typed reply closes the question with no pick; unanswered after 20 hours it expires and nothing is picked for ali. At most one question a day (UTC) |
 | script | chosen story | `script.json`: hook, 3-6 paragraphs each with a picture prompt, the lesson (lesson framing only), source | Claude Opus 5.5 with structured output and refusal fallback; the checker (word budget by length, paragraphs, hook, lesson by framing) allows one retry with its feedback; cost recorded on the stage row |
 | voice | script, Tara's recording | `voice.wav`: 48 kHz mono, rumble and hiss removed, silence trimmed at both ends, loudness -14 LUFS | ffmpeg in two passes (clean and trim, then loudness: in one chain ffmpeg 6.1 hangs on a take with no silence to trim); a take outside the length's expected range (short 35-60 s, long 55-100 s) imports with a warning; a new take replaces the old |
 | captions | script, voice | `captions.json`: each script word with its time, short caption cues (up to 3 words or 16 characters, split at punctuation and pauses), and when each part (hook, paragraphs, lesson) is spoken | OpenAI transcription (`whisper-1`, word timestamps, about $0.006 a minute); the script's words are kept and take their times from the matching heard words, unmatched ones are spread across the gap; under 50% matched is refused as the wrong take, under 85% warns; the render stage burns the cues in |
@@ -60,6 +60,7 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 - `video_stages`: one row per (video, stage): output path relative to `out/<video id>/`, cost_usd, seconds, finished_at. A rerun reuses the output instead of paying again.
 - `assets`: video id, path (relative to `out/<video id>/`), kind (image, music, footage, font), source, licence, added_at.
 - `spend`: one row per paid API call (at, video id, what, cost_usd), written as soon as the call returns; the monthly cap reads it.
+- `relay_messages`: Relay messages reel-bot waits on: message_id, video id, purpose (`pick`), sent_at, and closed_at with outcome (`picked`, `skipped`, `expired`, `unreadable`, `refused`). One per video and purpose. The answer's text is never stored.
 - `posts`: video id, platform (`youtube`, `instagram`, `tiktok`), the platform's ID, posted_at; one row per platform; a trigger refuses a row for a video with no recorded pick.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 

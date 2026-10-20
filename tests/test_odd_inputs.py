@@ -19,6 +19,7 @@ from reel_bot import (
     captions_write,
     instagram,
     publish,
+    relay_api,
     render,
     script,
     tiktok,
@@ -86,8 +87,18 @@ def parse_script(raw: bytes) -> object:
             {"duration": 3.0, "words": [{"word": "fox", "start": 0.1, "end": 0.4}]},
         ),
         (visuals_write.parse, VisualsError, {"data": [{"b64_json": "iVBORw0KGgo="}]}),
+        (relay_api.parse_sent, relay_api.RelayError, {"id": "msg_01", "status": "queued"}),
+        (
+            relay_api.parse_answers,
+            relay_api.RelayError,
+            {
+                "answers": [
+                    {"recipient": "ali", "answer": "1. Fox", "answered_at": "2026-10-22T09:00:00Z"}
+                ]
+            },
+        ),
     ],
-    ids=["script", "transcription", "picture"],
+    ids=["script", "transcription", "picture", "relay send", "relay answers"],
 )
 def test_parsers_raise_only_their_own_error(
     parse: Callable[[bytes], object], error: type[Exception], good: dict[str, Any]

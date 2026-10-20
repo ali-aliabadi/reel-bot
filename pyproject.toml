@@ -49,7 +49,7 @@ max-statements = 40
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "S311"]  # S311: seeded randomness makes tests repeatable
-"src/reel_bot/cli.py" = ["T201"]
+"src/reel_bot/cli*.py" = ["T201"]
 
 [tool.pyright]
 include = ["src", "tests"]

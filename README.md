@@ -24,6 +24,9 @@ brew install uv ffmpeg     # once (on the VPS: apt install ffmpeg fonts-dejavu-c
 make tools                 # Python 3.12, locked dev tools, gitleaks
 cp .env.example .env       # then fill in the keys
 make run ARGS=config    # checks .env, never prints the key
+make run ARGS=morning         # asks ali through Relay to pick today's story (once a day)
+make run ARGS="morning --check"   # records the pick once ali taps; never asks
+# or by hand:
 make run ARGS="video new --framing fable --length short"   # prints a video ID
 make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
 make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json

@@ -50,7 +50,7 @@ should be one small PR unless noted. Design details are in
 ## Phase 3: the daily loop through Relay
 
 - [x] Relay: voice-note answers to a question (relay PR #23; up to 20 MB, Telegram's cap)
-- [ ] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
+- [x] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which): `reel-bot morning`, then `reel-bot morning --check`
 - [ ] Send the script to Tara through Relay and wait for her voice-note answer
 - [ ] "Render ready" Relay message with a 720p preview; failure alert with stage and last error lines
 - [ ] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render

@@ -1,7 +1,6 @@
 """Command-line entry point. Subcommands are added here as roadmap items land."""
 
 import argparse
-import getpass
 import os
 import random
 import sqlite3
@@ -14,10 +13,11 @@ from reel_bot import (
     __version__,
     budget,
     captions_write,
+    cli_morning,
+    cli_publish,
     config,
     logs,
     pipeline,
-    publish,
     publish_write,
     render_write,
     script_write,
@@ -74,16 +74,9 @@ def build_parser() -> argparse.ArgumentParser:
     mk.add_argument("video_id")
     mk.add_argument("--voice", type=Path, help="Tara's new take; redoes captions and render")
     mk.add_argument("--publish", action="store_true", help="post once the render is done")
-    _publish_parsers(sub.add_parser)
+    cli_publish.add_parsers(sub.add_parser)
+    cli_morning.add_parser(sub.add_parser)
     return parser
-
-
-def _publish_parsers(add: Callable[..., argparse.ArgumentParser]) -> None:
-    pu = add("publish", help="post a picked, rendered video (after reel-bot auth)")
-    pu.add_argument("video_id")
-    pu.add_argument("--to", nargs="+", choices=publish.PLATFORMS, help="default: all signed in")
-    au = add("auth", help="sign in to a platform once; saved next to the database")
-    au.add_argument("platform", choices=publish.PLATFORMS)
 
 
 def _show_config(env: Mapping[str, str]) -> int:
@@ -142,7 +135,6 @@ def _video(args: argparse.Namespace, env: Mapping[str, str], now: datetime) -> i
 
 
 Stage = Callable[[sqlite3.Connection, Path], str]
-PUBLISH_ERRORS = (publish.PublishError, web.WebError)
 
 
 def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
@@ -151,7 +143,13 @@ def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
     conn = _open(env)
     try:
         line = action(conn, out_dir)
-    except (*pipeline.ERRORS, *PUBLISH_ERRORS, store.StoreError, videos.VideoError, OSError) as err:
+    except (
+        *pipeline.ERRORS,
+        *cli_publish.ERRORS,
+        store.StoreError,
+        videos.VideoError,
+        OSError,
+    ) as err:
         print(f"{name}: {err}", file=sys.stderr)
         return EXIT_REFUSED
     finally:
@@ -210,7 +208,7 @@ def _stages(
         return "\n".join(lines)
 
     def publish_(conn: sqlite3.Connection, out: Path) -> str:
-        ctx = publish_write.Context(out, _tokens(env), clock, web.Web())
+        ctx = publish_write.Context(out, cli_publish.tokens(env), clock, web.Web())
         return publish_write.post(conn, vid, getattr(args, "to", None), env, ctx)
 
     return {
@@ -248,24 +246,6 @@ def _stories(args: argparse.Namespace, env: Mapping[str, str], now: datetime) ->
         conn.close()
 
 
-def _tokens(env: Mapping[str, str]) -> Path:
-    return _db_path(env).with_name(publish_write.TOKENS)
-
-
-def _auth(platform: str, env: Mapping[str, str], clock: Clock) -> int:
-    out_dir = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
-    ctx = publish_write.Context(out_dir, _tokens(env), clock, web.Web())
-    try:
-        publish_write.sign_in(
-            platform, env, ctx, lambda q, hide: (getpass.getpass if hide else input)(q)
-        )
-    except PUBLISH_ERRORS as err:
-        print(f"auth: {err}", file=sys.stderr)
-        return EXIT_REFUSED
-    print(f"signed in to {platform}; saved in {ctx.tokens}")
-    return 0
-
-
 def main(
     argv: Sequence[str] | None = None,
     env: Mapping[str, str] | None = None,
@@ -282,7 +262,8 @@ def main(
         "config": lambda: _show_config(env),
         "stories": lambda: _stories(args, env, clock()),
         "video": lambda: _video(args, env, clock()),
-        "auth": lambda: _auth(args.platform, env, clock),
+        "auth": lambda: cli_publish.auth(args.platform, env, clock),
+        "morning": lambda: cli_morning.run(env, clock, _open, ask=not args.check),
     }
     if args.command in handlers:
         return handlers[args.command]()
