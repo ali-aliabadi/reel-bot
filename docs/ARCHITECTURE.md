@@ -97,7 +97,7 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 
 | Variable | Required | Default | What |
 | --- | --- | --- | --- |
-| `RELAY_URL` | yes | | Relay's base URL, `https` only |
+| `RELAY_URL` | yes | | Relay's base URL: `https`, or `http://127.0.0.1:<port>` on Relay's own host (the VPS uses `http://127.0.0.1:18080`, so the videos skip nginx's and Cloudflare's body limits) |
 | `RELAY_API_KEY` | yes | | reel-bot's Relay key (`relay clients create reel-bot`) |
 | `RELAY_APP` | no | `reel-bot` | Sent as every message's `source` |
 | `RELAY_USER` | no | `admin` | Who gets the messages and picks the daily story (ali) |

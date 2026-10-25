@@ -59,7 +59,7 @@ python3 $R notify "Nightly backup of nas stopped." --title "Backup failed" --urg
   --field Host=nas --field "Error=disk full"
 # {"id": "msg_01J...", "status": "queued"}
 
-# Attach a file (one per message, up to 5 MB; type guessed from the extension)
+# Attach a file (one per message, up to 5 MB, or 45 MB if the admin raised Relay's body limit; type guessed from the extension)
 python3 $R notify "September invoice." --file invoice.pdf --file-caption "Due Oct 15"
 
 # Ask with buttons and wait up to an hour for the answer
@@ -227,7 +227,7 @@ blocks and Telegram's one layout renders them in order.
 | `code` | `text` | 4000 chars | Monospaced block |
 | `link` | `text`, `url` | text 64, `https` only | A button under the message |
 | `image` | `url` (`https`) **or** `base64` + `content_type`, optional `caption` | 1 per message; PNG/JPEG up to 5 MB; caption 1024 | A photo. Use `base64` for images on private hosts: Telegram fetches `url` itself |
-| `file` | `filename`, `base64`, optional `content_type`, optional `caption` | 1 per message; any type, 1 byte to 5 MB; filename 128, no `/`, `\` or control characters; caption 1024 | A document the reader can download. `content_type` defaults to `application/octet-stream` |
+| `file` | `filename`, `base64`, optional `content_type`, optional `caption` | 1 per message; any type, 1 byte to 5 MB (45 MB when the admin has raised `RELAY_MAX_BODY_BYTES`; else a `413`); filename 128, no `/`, `\` or control characters; caption 1024 | A document the reader can download. `content_type` defaults to `application/octet-stream` |
 | `question` | `text`, optional `options`, optional `webhook`, optional `reply: "voice"` | see Ask a question | The question in bold at the end, with buttons |
 
 Every value is plain text: `<b>`, Markdown and the like are shown literally,
@@ -249,9 +249,10 @@ Reusable shapes for common cases (with the tool, or as the JSON body):
 - **Free-text input:** a `question` with no `options`; validate what comes back.
 - **Screenshot or chart:** one `image` block (`base64` for local files) with a short `caption`.
 - **File (log, CSV, PDF):** a `text` line saying what it is, then one `file` block.
-  Use `image` instead for pictures people should see inline. Over 5 MB: don't
-  send it; say where to find it. An image and a file together must still fit
-  the 7 MB request limit (base64 adds a third).
+  Use `image` instead for pictures people should see inline. Over 5 MB: send it only
+  if the admin raised Relay's body limit for you (up to 45 MB); otherwise say where
+  to find it. An image and a file together must still fit the request limit (7 MB
+  by default; base64 adds a third).
 
 ## Ask a question
 

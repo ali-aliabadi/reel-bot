@@ -29,7 +29,7 @@ id, err = rc.Send(ctx, relay.Message{
 	},
 })
 
-// Attach a file (one per message, up to 5 MB), sent as a Telegram document
+// Attach a file (one per message, up to 5 MB; 45 MB with a raised body limit), sent as a Telegram document
 pdf, err := os.ReadFile("invoice.pdf")
 if err != nil {
 	return err
@@ -106,7 +106,8 @@ var ErrNoRecipient = errors.New("relay: say who to notify: set Message.To or REL
 
 // FileBlock attaches data as a file named filename (shown to the reader).
 // contentType may be empty (application/octet-stream). Relay accepts one
-// file per message, 1 byte to 5 MB.
+// file per message, 1 byte to 5 MB (45 MB when the admin has raised
+// RELAY_MAX_BODY_BYTES).
 func FileBlock(filename, contentType string, data []byte, caption string) Block {
 	return Block{
 		Type: "file", Filename: filename, ContentType: contentType, Caption: caption,
@@ -183,7 +184,7 @@ func FromEnv() (*Client, error) {
 		APIKey: strings.TrimSpace(os.Getenv("RELAY_API_KEY")),
 		App:    strings.TrimSpace(os.Getenv("RELAY_APP")),
 		User:   strings.TrimSpace(os.Getenv("RELAY_USER")),
-		HTTP:   &http.Client{Timeout: 2 * time.Minute}, // room to upload a 5 MB file
+		HTTP:   &http.Client{Timeout: 5 * time.Minute}, // room to upload a 45 MB file
 	}
 	if c.URL == "" || c.APIKey == "" || c.App == "" {
 		return nil, errors.New("relay: set RELAY_URL, RELAY_API_KEY and RELAY_APP")

@@ -10,6 +10,7 @@ DEFAULT_RELAY_USER = "admin"
 DEFAULT_DB_PATH = "./data/reel-bot.db"
 DEFAULT_OUT_DIR = "./out"
 DEFAULT_MONTHLY_CAP_USD = 20.0
+LOOPBACK = "127.0.0.1"
 
 
 class ConfigError(Exception):
@@ -41,6 +42,15 @@ class Config:
         }
 
 
+def _relay_url_ok(url: str) -> bool:
+    """https, or plain http to Relay's loopback port on the same machine (the VPS), which
+    skips nginx's and Cloudflare's body limits for the finished videos."""
+    u = urlparse(url)
+    return bool(u.netloc) and (
+        u.scheme == "https" or (u.scheme == "http" and u.hostname == LOOPBACK)
+    )
+
+
 def load(env: Mapping[str, str]) -> Config:
     """Build a Config from env, reporting every problem at once."""
     problems: list[str] = []
@@ -51,8 +61,10 @@ def load(env: Mapping[str, str]) -> Config:
     relay_url = get("RELAY_URL").rstrip("/")
     if not relay_url:
         problems.append("RELAY_URL is required")
-    elif urlparse(relay_url).scheme != "https" or not urlparse(relay_url).netloc:
-        problems.append("RELAY_URL must be an https URL")
+    elif not _relay_url_ok(relay_url):
+        problems.append(
+            "RELAY_URL must be an https URL (or http://127.0.0.1:<port> on Relay's host)"
+        )
 
     relay_api_key = get("RELAY_API_KEY")
     if not relay_api_key:
