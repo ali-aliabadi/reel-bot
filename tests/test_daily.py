@@ -9,7 +9,18 @@ from typing import Any
 
 import pytest
 
-from reel_bot import daily, pipeline, script, store, store_daily, store_videos, stories, web
+from reel_bot import (
+    daily,
+    pipeline,
+    script,
+    store,
+    store_daily,
+    store_videos,
+    stories,
+    videos,
+    visuals,
+    web,
+)
 from reel_bot.captions import Word
 from reel_bot.captions_write import Heard
 from reel_bot.relay_api import Answer, RelayError
@@ -105,6 +116,14 @@ def pasted(text: str = SCRIPT) -> Answer:
     return Answer("tara", f"Here is your script:\n```json\n{text}\n```", None, "")
 
 
+def voiced(conn: sqlite3.Connection, vid: str) -> None:
+    """Record Tara's take as imported, without ffmpeg."""
+    store_videos.record_stage(conn, vid, videos.StageRun("voice", "voice.wav", 0, 1, NOW))
+
+
+PNG = Answer("tara", "", None, "", visuals.PNG_MAGIC + b"rest")
+
+
 def picked_and_scripted(run: daily.Run, relay: FakeRelay) -> str:
     """Start a video, pick its story, paste the script back: Tara is asked next."""
     vid = str(daily.start(run, "fable", "short", random.Random(1)))
@@ -159,21 +178,33 @@ def test_tick_records_the_pick_then_asks_tara_once(
     assert daily.tick(run) == [f"{vid}\twaiting for the script"]
 
     relay.answer(2, pasted())
-    assert daily.tick(run) == [
-        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
-    ]
+    assert daily.tick(run) == [f"{vid}\tasked for the take"]
     assert store_videos.stage_runs(conn, vid)["script"].cost_usd == 0
-    ask, *pictures = relay.sent[2:]
+    ask = relay.last()
     assert ask["to"] == ["tara"]
     assert ask["blocks"][0]["text"].startswith("A hungry fox")
     assert ask["blocks"][1]["reply"] == "voice"
-    assert [p["blocks"][1]["reply"] for p in pictures] == ["image"] * 4
-    assert "A fox, scene 3." in pictures[3]["blocks"][0]["text"]
-
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\twaiting for Tara's take of ")
-    assert line.endswith("and pictures 1, 2, 3, 4 (prompts: reel-bot visuals " + vid + ")")
-    assert len(relay.sent) == 7
+    assert len(relay.sent) == 3  # one step at a time: no picture before the take
+
+
+def test_tara_gets_one_picture_at_a_time(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    relay = FakeRelay()
+    run = make_run(conn, tmp_path / "out", relay, Calls())
+    vid = picked_and_scripted(run, relay)
+    daily.tick(run)
+    voiced(conn, vid)
+    assert daily.tick(run) == [f"{vid}\tasked for picture 1"]
+    (line,) = daily.tick(run)
+    assert line.startswith(f"{vid}\twaiting for pictures 1, 2, 3, 4 ")
+    relay.answer(4, PNG)
+    assert daily.tick(run) == [f"{vid}\tasked for picture 2"]
+    picture = relay.last()
+    assert picture["idempotency_key"] == f"{vid}-picture-2"
+    assert picture["blocks"][1]["reply"] == "image"
+    assert "A fox, scene 1." in picture["blocks"][0]["text"]
+    assert len(relay.sent) == 5
 
 
 def test_a_script_with_problems_goes_back_to_chatgpt_twice_then_fails(
@@ -250,6 +281,8 @@ def test_an_answer_without_a_picture_fails(conn: sqlite3.Connection, tmp_path: P
     run = make_run(conn, tmp_path / "out", relay, Calls())
     vid = picked_and_scripted(run, relay)
     daily.tick(run)
+    voiced(conn, vid)
+    daily.tick(run)
     relay.answer(4, Answer("tara", "", b"OggS", "audio/ogg"))
     assert daily.tick(run) == [f"{vid}\tfailed: the answer to picture 1 has no picture"]
     assert {"label": "Step", "value": "the take and pictures"} in relay.last()["blocks"][0]["items"]
@@ -259,14 +292,14 @@ def test_asking_tara_resumes_where_relay_stopped(conn: sqlite3.Connection, tmp_p
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
     vid = picked_and_scripted(run, relay)
-    relay.limit = 5  # the pick, the script, the take and pictures 1 and 2 go out
+    daily.tick(run)
+    voiced(conn, vid)
+    relay.limit = 3  # the pick, the script and the take went out; picture 1 is refused
     assert daily.tick(run) == [f"{vid}\tfailed: refused"]
     daily.retry(conn, vid)
     relay.limit = 1000
-    assert daily.tick(run) == [f"{vid}\tasked for picture 3, picture 4"]
-    assert [m["idempotency_key"] for m in relay.sent[3:]] == [
-        f"{vid}-picture-{n}" for n in range(1, 5)
-    ]
+    assert daily.tick(run) == [f"{vid}\tasked for picture 1"]
+    assert relay.last()["idempotency_key"] == f"{vid}-picture-1"
 
 
 def _ffmpeg(*args: str) -> None:
@@ -285,10 +318,10 @@ def test_a_voice_note_becomes_a_video_sent_to_tara_and_ali(
     vid = picked_and_scripted(run, relay)
     daily.tick(run)
     relay.answer(3, Answer("tara", "", take.read_bytes(), "audio/ogg"))
+    assert daily.tick(run) == [f"{vid}\tasked for picture 1"]
     for n in (4, 5, 6):
         relay.answer(n, Answer("tara", "", None, "", png.read_bytes()))
-    (line,) = daily.tick(run)
-    assert line.startswith(f"{vid}\twaiting for pictures 4 ")
+        assert daily.tick(run) == [f"{vid}\tasked for picture {n - 2}"]
     relay.answer(7, Answer("tara", "", None, "", png.read_bytes()))
 
     (line,) = daily.tick(run)

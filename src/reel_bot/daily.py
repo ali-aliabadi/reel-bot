@@ -5,9 +5,10 @@ finished video goes back to her there to upload by hand.
 three stories. `tick` (every few minutes) moves every open video on: the pick is
 recorded with who made it; Tara gets the script prompt to paste into ChatGPT and
 replies with its answer, which is checked (a script with problems goes back to
-the same chat as a fix, at most three tries in all); then she gets the script with a
-voice-note question and one message per picture prompt, which she answers with
-the picture she made in ChatGPT; each answer is saved as it arrives, and once
+the same chat as a fix, at most three tries in all). Tara is guided one step at
+a time, each message sent only once the one before is answered: the script to
+read as a voice note, then each picture prompt, answered with the picture she
+made in ChatGPT; each answer is saved as it arrives, and once
 the take and every picture are in, the video is rendered and the MP4 is sent to
 her and to ali. Each step's Relay message ID is stored, so a tick is safe to
 rerun: it never asks twice or sends twice. A failure stops the video and
@@ -168,12 +169,14 @@ def _advance(run: Run, vid: str) -> str:
             return waiting
     if "take" not in sent:
         pipeline.advance(conn, vid, None, ctx)  # read-this.txt from the script
-    asked = _ask_tara(run, vid, title, sent)
-    if asked:
-        return f"asked for {asked}"
+        spoken = (videos.video_dir(ctx.out_dir, vid) / pipeline.READ_FILE).read_text("utf-8")
+        mid = run.relay.send(take_message(run.people.narrator, vid, title, spoken.strip()))
+        store_daily.add_step(conn, vid, "take", mid, run.clock())
+        return "asked for the take"
     done = pipeline.advance(conn, vid, _collect(run, vid, sent), ctx)
     if done.render is None:
-        return f"waiting for {done.waiting}"
+        asked = _next_picture(run, vid, title, sent)
+        return f"asked for picture {asked}" if asked else f"waiting for {done.waiting}"
     to = [run.people.narrator, run.people.picker]
     mid = run.relay.send(file_message(to, vid, title, done.render))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
@@ -202,22 +205,21 @@ def _script(run: Run, video: videos.Video, title: str, sent: dict[str, str]) -> 
     return "asked for the script" if tries == 0 else f"asked for fix {tries} of the script"
 
 
-def _ask_tara(run: Run, vid: str, title: str, sent: dict[str, str]) -> str:
-    """Send Tara whatever she hasn't been asked yet: the script to read, then one
-    message per picture prompt. Returns what was asked, "" when nothing was."""
-    conn, out, asked = run.conn, run.context(vid).out_dir, list[str]()
-    if "take" not in sent:
-        spoken = (videos.video_dir(out, vid) / pipeline.READ_FILE).read_text(encoding="utf-8")
-        mid = run.relay.send(take_message(run.people.narrator, vid, title, spoken.strip()))
-        store_daily.add_step(conn, vid, "take", mid, run.clock())
-        asked.append("the take")
-    prompts = [p.prompt for p in visuals_write.plan(conn, out, vid).pictures]
-    for n in range(1, len(prompts) + 1):
+def _next_picture(run: Run, vid: str, title: str, sent: dict[str, str]) -> int:
+    """Ask Tara for the next picture once her take and every earlier picture are
+    in, so she gets one step at a time. Returns its number, 0 when none was asked."""
+    conn, out = run.conn, run.context(vid).out_dir
+    if "voice" not in store_videos.stage_runs(conn, vid):
+        return 0
+    folder, pictures = videos.video_dir(out, vid), visuals_write.plan(conn, out, vid).pictures
+    for n, pic in enumerate(pictures, 1):
         if f"picture-{n}" not in sent:
-            msg = picture_message(run.people.narrator, vid, title, prompts, n)
+            msg = picture_message(run.people.narrator, vid, title, [p.prompt for p in pictures], n)
             store_daily.add_step(conn, vid, f"picture-{n}", run.relay.send(msg), run.clock())
-            asked.append(f"picture {n}")
-    return ", ".join(asked)
+            return n
+        if visuals_write.found(folder, pic) is None:
+            return 0
+    return 0
 
 
 def _collect(run: Run, vid: str, sent: dict[str, str]) -> Path | None:
@@ -225,7 +227,8 @@ def _collect(run: Run, vid: str, sent: dict[str, str]) -> Path | None:
     conn, out = run.conn, run.context(vid).out_dir
     folder = videos.video_dir(out, vid)
     for n, pic in enumerate(visuals_write.plan(conn, out, vid).pictures, 1):
-        if visuals_write.found(folder, pic) is None and (got := _poll(run, sent[f"picture-{n}"])):
+        step = sent.get(f"picture-{n}")
+        if step and visuals_write.found(folder, pic) is None and (got := _poll(run, step)):
             if got.image is None:
                 raise DailyError(f"the answer to picture {n} has no picture")
             made = visuals_write.Made(got.image, got.recipient, run.clock())

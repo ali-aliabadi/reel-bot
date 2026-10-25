@@ -4,7 +4,7 @@ The daily run is two systemd timers (units in `systemd/`):
 
 - `reel-bot-daily-start.timer` at 08:00 asks ali in Relay to pick one of three stories.
 - `reel-bot-daily-tick.timer` every 5 minutes records the pick, has Tara get the script
-  from ChatGPT, sends her the script and the picture prompts, collects her voice note and pictures,
+  from ChatGPT, then asks her one step at a time for the voice note and each picture, collects her voice note and pictures,
   renders the video and sends her (and ali) the MP4.
 
 Before installing: the Phase 0 VPS steps in `docs/ROADMAP.md` are done (checkout in
