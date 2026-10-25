@@ -171,3 +171,19 @@ def test_a_bad_spend_cap_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[s
     env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_MONTHLY_CAP_USD": "lots"}
     assert main(["render", "vid_01ARZ3NDEKTSV4RRFFQ69G5FAV"], env) == 2
     assert "REEL_BOT_MONTHLY_CAP_USD" in capsys.readouterr().err
+
+
+def test_daily_needs_the_narrator_and_retries_only_failed_videos(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = {
+        "REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db"),
+        "RELAY_URL": "https://relay.example.test",
+        "RELAY_API_KEY": "rk_test_not_a_real_key",
+    }
+    assert main(["daily", "tick"], env) == 2
+    assert "REEL_BOT_NARRATOR" in capsys.readouterr().err
+    assert main(["daily", "tick"], {**env, "REEL_BOT_NARRATOR": "tara"}) == 0
+    assert capsys.readouterr().out == ""
+    assert main(["daily", "retry", "vid_X"], env) == 3
+    assert "has not failed" in capsys.readouterr().err

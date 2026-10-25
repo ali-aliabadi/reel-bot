@@ -39,6 +39,7 @@ src/reel_bot/data/    stories.json, the story catalog
 tests/                pytest tests, test_*.py next to what they cover by name
 scripts/              check-file-length.sh, install-gitleaks.sh and other repo checks
 docs/                 ARCHITECTURE.md (design), ROADMAP.md (what to build next)
+deploy/               systemd timers for the daily run on the VPS, and how to install them
 .github/              workflows/ci.yml, dependabot.yml, pull_request_template.md
 .claude/skills/       project skills (reel-bot-review)
 skills/relay-notify/  copied unchanged from ali-aliabadi/relay; how reel-bot talks to ali
@@ -79,7 +80,7 @@ Small files keep agent context focused and diffs reviewable.
 - **Errors:** raise specific exceptions with context (`raise RenderError("ffmpeg exited 1") from err`); never swallow. External calls (models, TTS, Relay, YouTube) have timeouts and bounded retries.
 - **Time:** store UTC, ISO 8601. Pass a clock (`Callable[[], datetime]`) where time matters.
 - **Dependencies:** prefer the stdlib. Adding a package needs a one-line reason in the PR description.
-- **No `print`** outside `cli.py` (ruff `T20`); use `logging`.
+- **No `print`** outside the `cli*.py` modules (ruff `T20`); use `logging`.
 - **Idempotent runs:** a stage re-run for the same video ID reuses its output on disk instead of paying for it again.
 - **Spend cap:** every paid call is wrapped by `budget.Budget` (worst-case check before, real cost recorded in `spend` after). Never call a paid client unwrapped.
 

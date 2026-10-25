@@ -47,7 +47,7 @@ metrics (nightly): YouTube Analytics ──► SQLite ──► Relay morning re
 | captions | script, voice | `captions.json`: each script word with its time, short caption cues (up to 3 words or 16 characters, split at punctuation and pauses), and when each part (hook, paragraphs, lesson) is spoken | OpenAI transcription (`whisper-1`, word timestamps, about $0.006 a minute); the script's words are kept and take their times from the matching heard words, unmatched ones are spread across the gap; under 50% matched is refused as the wrong take, under 85% warns; the render stage burns the cues in |
 | visuals | script | `picture-<n>.png` per paragraph (1024x1536) and `visuals.json` (section, file, prompt) | OpenAI image API (`gpt-image-1`, medium quality, about $0.06 a picture); the prompt is the paragraph's scene plus the fixed style and a calm lower third for captions; the hook plays over the first picture and the lesson over the last; can run while Tara reads; a rerun after a failure draws only missing pictures; each picture is an `assets` row (source, licence) |
 | render | voice, captions, visuals | `render.mp4`: 1080x1920 H.264 (CRF 20) with AAC audio, 30 fps; `captions.ass` | ffmpeg at low priority (`nice`) on 2 threads; each picture pans slowly (alternately down and up) over a frame scaled 10% larger; cuts sit halfway through the pause between parts; the hook plays over the first picture and the lesson over the last; captions burned in with libass in DejaVu Sans Bold (white, black outline, 420 px above the bottom, clear of the Shorts buttons); the output is checked with ffprobe (size, audio, length within 0.5 s of the take); the font is recorded in `assets` |
-| review | render | Relay message with a 720p preview | Relay files are capped at 5 MB |
+| review | render | the full MP4 in Relay, to Tara and ali | `reel-bot daily tick` sends it as a file (up to 45 MB, under Telegram's 50 MB bot upload); Tara uploads it to YouTube and Instagram by hand. Needs Relay to accept files that big (its cap was 5 MB) |
 | publish | render, script, ali's pick | one post per platform (`posts` table) | `reel-bot publish <video id>` (or `make --publish`): refused without a recorded pick, in code and by a database trigger. YouTube: resumable upload, `containsSyntheticMedia`, locked private until Google's audit. Instagram Reels: Instagram API with Instagram Login from a development-mode Meta app (ali as tester; public, no App Review), upload from disk, AI disclosure in the caption (the API has no label). TikTok: Direct Post, `is_aigc`, `SELF_ONLY` until TikTok's audit. Title is the story's title plus `#shorts`; the description is the hook, the source, "Narrated by Tara; the pictures are made with AI" and tags. A platform that has the video is skipped, so a rerun posts only where it failed; calls that create a post are never retried |
 
 ## Data
@@ -61,6 +61,7 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 - `assets`: video id, path (relative to `out/<video id>/`), kind (image, music, footage, font), source, licence, added_at.
 - `spend`: one row per paid API call (at, video id, what, cost_usd), written as soon as the call returns; the monthly cap reads it.
 - `posts`: video id, platform (`youtube`, `instagram`, `tiktok`), the platform's ID, posted_at; one row per platform; a trigger refuses a row for a video with no recorded pick.
+- `daily_steps`: video id, step (`pick`, `take`, `sent`, `failed`), the Relay message ID, at; one row per step, so the daily run never asks or sends twice.
 - `metrics`: video id, read_at, views, average percentage viewed, subscribers gained, viewed vs swiped (entered by hand from Studio).
 
 `reel-bot stories` lists the stories whose tale is still unused, `reel-bot stories pick` suggests 3 from different tales, and `reel-bot stories use <story id> <video id>` records a tale as told (refused if it already was). Record the hand-made videos this way too.
@@ -81,6 +82,15 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 `reel-bot voice <video id> <recording>` cleans Tara's take into `out/<video id>/voice.wav` once the script exists. The Relay flow (phase 3) will call the same import with the voice note it downloads.
 
+## Daily run
+
+Two systemd timers on the VPS drive the day (`deploy/systemd`, `deploy/README.md`):
+
+- `reel-bot daily start --framing F --length L` (08:00) makes a video, offers 3 stories from different untold tales (`story_options`) and asks `RELAY_USER` (ali) to tap one. While an earlier pick is unanswered it sends nothing: there is never a default pick.
+- `reel-bot daily tick` (every 5 minutes) moves each open video one step: it records the tapped story as the pick (who is the Relay username that answered, checked against the offered buttons), runs script and visuals, sends the script to `REEL_BOT_NARRATOR` (Tara) as a voice-note question, saves her answer as `take.<ext>`, runs voice, captions and render, and sends the MP4 to Tara and ali.
+
+Each step's Relay message ID is a `daily_steps` row and every message has an idempotency key from the video and step, so a tick can be rerun and never asks or sends twice. Relay being unreachable while polling is logged and retried on the next tick. Any other error stops the video (`failed` step) and sends ali a high-urgency alert with the step and the error; `reel-bot daily retry <video id>` reopens it. The tick timer runs under `MemoryMax` and `Nice` so a bad render can't starve Relay.
+
 Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which accepts only a valid video ID), git-ignored.
 
 ## Configuration
@@ -90,7 +100,8 @@ Each video's stage outputs go to `./out/<video id>/` (`videos.video_dir`, which 
 | `RELAY_URL` | yes | | Relay's base URL, `https` only |
 | `RELAY_API_KEY` | yes | | reel-bot's Relay key (`relay clients create reel-bot`) |
 | `RELAY_APP` | no | `reel-bot` | Sent as every message's `source` |
-| `RELAY_USER` | no | `admin` | Who gets the messages |
+| `RELAY_USER` | no | `admin` | Who gets the messages and picks the daily story (ali) |
+| `REEL_BOT_NARRATOR` | for `daily` | | Relay username of who reads the script and gets the finished video (Tara) |
 | `REEL_BOT_DB_PATH` | no | `./data/reel-bot.db` | SQLite file |
 | `REEL_BOT_OUT_DIR` | no | `./out` | Render output |
 | `ANTHROPIC_API_KEY` | for `script` | | Claude API key; read by the SDK, never logged |

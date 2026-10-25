@@ -89,6 +89,16 @@ MIGRATIONS = (
         SELECT RAISE(ABORT, 'no recorded story pick for this video');
     END;
     """,
+    """
+    -- The daily run's Relay messages: one per step, so a rerun never sends twice.
+    CREATE TABLE daily_steps (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        step TEXT NOT NULL CHECK (step IN ('pick', 'take', 'sent', 'failed')),
+        message_id TEXT NOT NULL,  -- Relay's message ID
+        at TEXT NOT NULL,
+        PRIMARY KEY (video_id, step)
+    );
+    """,
 )
 
 

@@ -50,10 +50,12 @@ should be one small PR unless noted. Design details are in
 ## Phase 3: the daily loop through Relay
 
 - [x] Relay: voice-note answers to a question (relay PR #23; up to 20 MB, Telegram's cap)
-- [ ] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
-- [ ] Send the script to Tara through Relay and wait for her voice-note answer
-- [ ] "Render ready" Relay message with a 720p preview; failure alert with stage and last error lines
-- [ ] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render
+- [x] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
+- [x] Send the script to Tara through Relay and wait for her voice-note answer
+- [x] The finished MP4 to Tara and ali through Relay (she uploads by hand); failure alert with the step and the error, `reel-bot daily retry`
+- [ ] Relay: file blocks up to 45 MB (Relay's `MaxFileBytes`, `RELAY_MAX_BODY_BYTES` and nginx's `client_max_body_size`), so the full video fits
+- [x] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render (units in `deploy/systemd`)
+- [ ] ali: set `REEL_BOT_NARRATOR` in the VPS's `.env` and install the timers (`deploy/README.md`)
 - [ ] Grow the catalog: every tale in the four public-domain sources, with source references
 
 ## Phase 4: metrics and decisions

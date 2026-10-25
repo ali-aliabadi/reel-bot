@@ -1,0 +1,16 @@
+# Asks ali, through Relay, to pick today's story (reel-bot daily start).
+# Install: see deploy/README.md. Runs from the checkout's virtualenv (`make tools`).
+[Unit]
+Description=reel-bot: ask for today's story pick
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/reel-bot
+EnvironmentFile=/opt/reel-bot/.env
+# Framing and length are the day's experiment settings; change them here.
+ExecStart=/opt/reel-bot/.venv/bin/reel-bot daily start --framing fable --length short
+TimeoutStartSec=5min
+Nice=10
+MemoryMax=300M

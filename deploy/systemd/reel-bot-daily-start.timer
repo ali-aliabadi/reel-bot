@@ -1,0 +1,10 @@
+[Unit]
+Description=reel-bot: the morning story pick
+
+[Timer]
+# The VPS's local time zone (check with `timedatectl`).
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

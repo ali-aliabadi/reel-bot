@@ -1,0 +1,10 @@
+[Unit]
+Description=reel-bot: check for answers every 5 minutes
+
+[Timer]
+# A tick still running (a render) is not started twice: systemd skips an active unit.
+OnCalendar=*:0/5
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

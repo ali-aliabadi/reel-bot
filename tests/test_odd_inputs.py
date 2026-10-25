@@ -19,6 +19,7 @@ from reel_bot import (
     captions_write,
     instagram,
     publish,
+    relay_api,
     render,
     script,
     tiktok,
@@ -49,7 +50,8 @@ def odd(rng: random.Random, depth: int = 0) -> Any:
     if pick < 0.7:
         return [odd(rng, depth + 1) for _ in range(rng.randint(0, 4))]
     keys = ["hook", "paragraphs", "lesson", "text", "picture", "words", "word", "start",
-            "end", "duration", "data", "b64_json", rng.choice(["k", "é", ""])]  # fmt: skip
+            "end", "duration", "data", "b64_json", "answers", "recipient", "answer", "audio",
+            "content_type", "base64", "id", rng.choice(["k", "é", ""])]  # fmt: skip
     return {rng.choice(keys): odd(rng, depth + 1) for _ in range(rng.randint(0, 5))}
 
 
@@ -86,8 +88,22 @@ def parse_script(raw: bytes) -> object:
             {"duration": 3.0, "words": [{"word": "fox", "start": 0.1, "end": 0.4}]},
         ),
         (visuals_write.parse, VisualsError, {"data": [{"b64_json": "iVBORw0KGgo="}]}),
+        (
+            relay_api.parse_answers,
+            relay_api.RelayError,
+            {
+                "answers": [
+                    {
+                        "recipient": "tara",
+                        "answer": "",
+                        "audio": {"content_type": "audio/ogg", "base64": "T2dnUw=="},
+                    }
+                ]
+            },
+        ),
+        (relay_api.parse_sent, relay_api.RelayError, {"id": "msg_01J", "status": "queued"}),
     ],
-    ids=["script", "transcription", "picture"],
+    ids=["script", "transcription", "picture", "relay answers", "relay sent"],
 )
 def test_parsers_raise_only_their_own_error(
     parse: Callable[[bytes], object], error: type[Exception], good: dict[str, Any]
