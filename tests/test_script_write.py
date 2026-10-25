@@ -77,6 +77,32 @@ def test_writes_caches_and_records_cost(conn: sqlite3.Connection, tmp_path: Path
     assert script_write.write(conn, tmp_path / "out", v.id, fake, Clock()) == s
 
 
+def test_add_records_a_usable_pasted_script_for_free(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    v = picked(conn)
+    out = tmp_path / "out"
+    assert script_write.add(conn, out, v.id, "not json", Clock()) == [
+        "it is not the JSON asked for"
+    ]
+    long = good().replace('"w w', '"' + "w " * 40 + "w", 1)
+    assert script_write.add(conn, out, v.id, long, Clock()) == [
+        "it has 148 words; it needs 95 to 120"
+    ]
+    assert "script" not in store_videos.stage_runs(conn, v.id)
+    assert script_write.add(conn, out, v.id, f"```json\n{good()}\n```", Clock()) == []
+    assert store_videos.stage_runs(conn, v.id)["script"].cost_usd == 0
+    # write reuses it: the fake has no replies.
+    assert script_write.write(conn, out, v.id, Fake(), Clock()).story_id == FOX.id
+
+
+def test_add_needs_a_pick(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    v = Video(videos.new_id(NOW), NOW, "fable", "short")
+    store_videos.add_video(conn, v)
+    with pytest.raises(script.ScriptError, match="no picked story"):
+        script_write.add(conn, tmp_path, v.id, good(), Clock())
+
+
 def test_retries_once_with_the_problems(conn: sqlite3.Connection, tmp_path: Path) -> None:
     v = picked(conn)
     fake = Fake(good(lesson="Do not sulk."), good())

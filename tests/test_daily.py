@@ -101,6 +101,19 @@ def button(relay: FakeRelay, n: int = 1, choice: int = 0) -> Answer:
     return Answer("ali", options[choice], None, "")
 
 
+def pasted(text: str = SCRIPT) -> Answer:
+    return Answer("tara", f"Here is your script:\n```json\n{text}\n```", None, "")
+
+
+def picked_and_scripted(run: daily.Run, relay: FakeRelay) -> str:
+    """Start a video, pick its story, paste the script back: Tara is asked next."""
+    vid = str(daily.start(run, "fable", "short", random.Random(1)))
+    relay.answer(1, button(relay))
+    daily.tick(run)
+    relay.answer(2, pasted())
+    return vid
+
+
 def test_start_asks_ali_once_until_the_pick_is_answered(
     conn: sqlite3.Connection, tmp_path: Path
 ) -> None:
@@ -133,13 +146,24 @@ def test_tick_records_the_pick_then_asks_tara_once(
     assert daily.tick(run) == [f"{vid}\twaiting for the pick"]
 
     relay.answer(1, button(relay, choice=2))
-    assert daily.tick(run) == [
-        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
-    ]
+    assert daily.tick(run) == [f"{vid}\tasked for the script"]
     video = store_videos.get_video(conn, vid)
     assert video.story_id == video.story_options[2]
     assert video.chosen_by == "ali"
-    ask, *pictures = relay.sent[1:]
+    paste = relay.last()
+    assert paste["to"] == ["tara"]
+    assert paste["blocks"][1]["text"] == script.chat_prompt(
+        next(s for s in store.all_stories(conn) if s.id == video.story_id), video
+    )
+    assert "options" not in paste["blocks"][2]
+    assert daily.tick(run) == [f"{vid}\twaiting for the script"]
+
+    relay.answer(2, pasted())
+    assert daily.tick(run) == [
+        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
+    ]
+    assert store_videos.stage_runs(conn, vid)["script"].cost_usd == 0
+    ask, *pictures = relay.sent[2:]
     assert ask["to"] == ["tara"]
     assert ask["blocks"][0]["text"].startswith("A hungry fox")
     assert ask["blocks"][1]["reply"] == "voice"
@@ -149,7 +173,29 @@ def test_tick_records_the_pick_then_asks_tara_once(
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\twaiting for Tara's take of ")
     assert line.endswith("and pictures 1, 2, 3, 4 (prompts: reel-bot visuals " + vid + ")")
-    assert len(relay.sent) == 6
+    assert len(relay.sent) == 7
+
+
+def test_a_script_with_problems_goes_back_to_chatgpt_twice_then_fails(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    relay = FakeRelay()
+    run = make_run(conn, tmp_path / "out", relay, Calls())
+    vid = str(daily.start(run, "fable", "short", random.Random(1)))
+    relay.answer(1, button(relay))
+    daily.tick(run)
+    relay.answer(2, Answer("tara", "Sorry, I can't help with that.", None, ""))
+    assert daily.tick(run) == [f"{vid}\tasked for fix 1 of the script"]
+    fix = relay.last()
+    assert fix["idempotency_key"] == f"{vid}-script-2"
+    assert "it is not the JSON asked for" in fix["blocks"][1]["text"]
+    relay.answer(3, pasted(SCRIPT.replace("word0", "word0 extra")))
+    assert daily.tick(run) == [f"{vid}\tasked for fix 2 of the script"]
+    relay.answer(4, pasted(json.dumps({"hook": "", "paragraphs": [], "lesson": ""})))
+    (line,) = daily.tick(run)
+    assert line.startswith(f"{vid}\tfailed: ChatGPT's script still has problems: it has 0 words")
+    assert {"label": "Step", "value": "script"} in relay.last()["blocks"][0]["items"]
+    assert "script" not in store_videos.stage_runs(conn, vid)
 
 
 def test_relay_down_while_waiting_is_not_a_failure(
@@ -180,9 +226,7 @@ def test_a_pick_that_was_not_offered_fails_alerts_ali_and_can_be_retried(
 
     daily.retry(conn, vid)
     relay.answer(1, button(relay))
-    assert daily.tick(run) == [
-        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
-    ]
+    assert daily.tick(run) == [f"{vid}\tasked for the script"]
     with pytest.raises(daily.DailyError, match="has not failed"):
         daily.retry(conn, vid)
 
@@ -192,10 +236,9 @@ def test_a_take_without_audio_fails_even_when_the_alert_cannot_be_sent(
 ) -> None:
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
-    vid = str(daily.start(run, "fable", "short", random.Random(1)))
-    relay.answer(1, button(relay))
+    vid = picked_and_scripted(run, relay)
     daily.tick(run)
-    relay.answer(2, Answer("tara", "I'll do it later", None, ""))
+    relay.answer(3, Answer("tara", "I'll do it later", None, ""))
     relay.refuse = True
     (line,) = daily.tick(run)
     assert line == f"{vid}\tfailed: the take's answer has no audio"
@@ -205,10 +248,9 @@ def test_a_take_without_audio_fails_even_when_the_alert_cannot_be_sent(
 def test_an_answer_without_a_picture_fails(conn: sqlite3.Connection, tmp_path: Path) -> None:
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
-    vid = str(daily.start(run, "fable", "short", random.Random(1)))
-    relay.answer(1, button(relay))
+    vid = picked_and_scripted(run, relay)
     daily.tick(run)
-    relay.answer(3, Answer("tara", "", b"OggS", "audio/ogg"))
+    relay.answer(4, Answer("tara", "", b"OggS", "audio/ogg"))
     assert daily.tick(run) == [f"{vid}\tfailed: the answer to picture 1 has no picture"]
     assert {"label": "Step", "value": "the take and pictures"} in relay.last()["blocks"][0]["items"]
 
@@ -216,14 +258,13 @@ def test_an_answer_without_a_picture_fails(conn: sqlite3.Connection, tmp_path: P
 def test_asking_tara_resumes_where_relay_stopped(conn: sqlite3.Connection, tmp_path: Path) -> None:
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
-    vid = str(daily.start(run, "fable", "short", random.Random(1)))
-    relay.answer(1, button(relay))
-    relay.limit = 4  # the pick, the take and pictures 1 and 2 go out
+    vid = picked_and_scripted(run, relay)
+    relay.limit = 5  # the pick, the script, the take and pictures 1 and 2 go out
     assert daily.tick(run) == [f"{vid}\tfailed: refused"]
     daily.retry(conn, vid)
     relay.limit = 1000
     assert daily.tick(run) == [f"{vid}\tasked for picture 3, picture 4"]
-    assert [m["idempotency_key"] for m in relay.sent[2:]] == [
+    assert [m["idempotency_key"] for m in relay.sent[3:]] == [
         f"{vid}-picture-{n}" for n in range(1, 5)
     ]
 
@@ -241,15 +282,14 @@ def test_a_voice_note_becomes_a_video_sent_to_tara_and_ali(
     _ffmpeg("-f", "lavfi", "-i", "sine=frequency=200:duration=6", "-c:a", "libopus", str(take))
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
-    vid = str(daily.start(run, "fable", "short", random.Random(1)))
-    relay.answer(1, button(relay))
+    vid = picked_and_scripted(run, relay)
     daily.tick(run)
-    relay.answer(2, Answer("tara", "", take.read_bytes(), "audio/ogg"))
-    for n in (3, 4, 5):
+    relay.answer(3, Answer("tara", "", take.read_bytes(), "audio/ogg"))
+    for n in (4, 5, 6):
         relay.answer(n, Answer("tara", "", None, "", png.read_bytes()))
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\twaiting for pictures 4 ")
-    relay.answer(6, Answer("tara", "", None, "", png.read_bytes()))
+    relay.answer(7, Answer("tara", "", None, "", png.read_bytes()))
 
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\tsent ")

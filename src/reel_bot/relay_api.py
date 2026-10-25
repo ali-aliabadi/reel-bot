@@ -82,6 +82,32 @@ def take_message(to: str, video_id: str, title: str, spoken: str) -> dict[str, o
     }
 
 
+def script_message(
+    to: str, video_id: str, title: str, paste: str, attempt: int
+) -> dict[str, object]:
+    """Asks Tara to paste `paste` into ChatGPT and reply with its answer; from the
+    second attempt on, `paste` asks the same chat to fix its script."""
+    if len(paste) > MAX_TEXT:
+        raise RelayError(f"the script prompt is over Relay's {MAX_TEXT} characters")
+    first = attempt == 1
+    return {
+        "to": [to],
+        "urgency": "normal",
+        "title": (f"Script: {title}" if first else f"Script, try {attempt}: {title}")[:256],
+        "idempotency_key": f"{video_id}-script-{attempt}",
+        "blocks": [
+            {
+                "type": "text",
+                "text": "Copy this into a new ChatGPT chat:"
+                if first
+                else "ChatGPT's script needs a fix. Copy this into the same chat:",
+            },
+            {"type": "code", "text": paste},
+            {"type": "question", "text": "Reply to this message with ChatGPT's whole answer."},
+        ],
+    }
+
+
 def picture_message(
     to: str, video_id: str, title: str, prompts: Sequence[str], number: int
 ) -> dict[str, object]:

@@ -42,6 +42,21 @@ def test_prompt_reads_the_settings(snapshot: Callable[[str, str], None]) -> None
     assert "working life" in script.prompt(STORY, LONG_LESSON)
 
 
+def test_chat_prompt_is_the_whole_brief_ending_with_the_format() -> None:
+    chat = script.chat_prompt(STORY, SHORT_FABLE)
+    assert chat.startswith(script.SYSTEM)
+    assert script.prompt(STORY, SHORT_FABLE) in chat
+    assert chat.endswith(script.CHAT_FORMAT)
+    assert len(chat) < 4000  # one Relay code block
+    fix = script.chat_fix(["it has 130 words; it needs 95 to 120"])
+    assert "- it has 130 words; it needs 95 to 120\n" in fix
+
+
+def test_parse_takes_a_pasted_chat_answer() -> None:
+    pasted = f"Sure! Here it is:\n```json\n{reply()}\n```\nWant changes?"
+    assert script.parse(pasted, STORY, SHORT_FABLE) == script.parse(reply(), STORY, SHORT_FABLE)
+
+
 def test_parse_and_check_a_good_script(snapshot: Callable[[str, str], None]) -> None:
     s = script.parse(reply(), STORY, SHORT_FABLE)
     assert s.words() == 7 + 100

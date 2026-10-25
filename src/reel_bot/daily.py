@@ -3,7 +3,9 @@ finished video goes back to her there to upload by hand.
 
 `start` (once a morning, from a timer) makes a video and asks ali to pick one of
 three stories. `tick` (every few minutes) moves every open video on: the pick is
-recorded with who made it and the script is written; Tara gets the script with a
+recorded with who made it; Tara gets the script prompt to paste into ChatGPT and
+replies with its answer, which is checked (a script with problems goes back to
+the same chat as a fix, at most three tries in all); then she gets the script with a
 voice-note question and one message per picture prompt, which she answers with
 the picture she made in ChatGPT; each answer is saved as it arrives, and once
 the take and every picture are in, the video is rendered and the MP4 is sent to
@@ -24,6 +26,8 @@ from typing import Protocol
 
 from reel_bot import (
     pipeline,
+    script,
+    script_write,
     store,
     store_daily,
     store_videos,
@@ -41,12 +45,14 @@ from reel_bot.relay_api import (
     options,
     pick_message,
     picture_message,
+    script_message,
     take_message,
 )
 
 log = logging.getLogger(__name__)
 
 CHOICES = 3
+SCRIPT_TRIES = 3  # ChatGPT's first script and up to two fixes (store.py allows script-1..3)
 
 
 class DailyError(Exception):
@@ -156,8 +162,12 @@ def _advance(run: Run, vid: str) -> str:
         store_videos.choose_story(conn, vid, story_id, got.recipient, run.clock())
         video = store_videos.get_video(conn, vid)
     title = _story(conn, str(video.story_id)).title
+    if "script" not in store_videos.stage_runs(conn, vid):
+        waiting = _script(run, video, title, sent)
+        if waiting:
+            return waiting
     if "take" not in sent:
-        pipeline.advance(conn, vid, None, ctx)  # the script
+        pipeline.advance(conn, vid, None, ctx)  # read-this.txt from the script
     asked = _ask_tara(run, vid, title, sent)
     if asked:
         return f"asked for {asked}"
@@ -168,6 +178,28 @@ def _advance(run: Run, vid: str) -> str:
     mid = run.relay.send(file_message(to, vid, title, done.render))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
     return f"sent {done.render} (${done.cost_usd():.2f})"
+
+
+def _script(run: Run, video: videos.Video, title: str, sent: dict[str, str]) -> str:
+    """Ask Tara for ChatGPT's script, check her answer, and ask for a fix while it
+    has problems. Returns what it waits for, "" once the script is recorded."""
+    conn, vid = run.conn, video.id
+    tries = sum(step.startswith("script-") for step in sent)
+    if tries == 0:
+        paste = script.chat_prompt(_story(conn, str(video.story_id)), video)
+    else:
+        got = _poll(run, sent[f"script-{tries}"])
+        if got is None:
+            return "waiting for the script"
+        found = script_write.add(conn, run.context(vid).out_dir, vid, got.text, run.clock)
+        if not found:
+            return ""
+        if tries == SCRIPT_TRIES:
+            raise DailyError(f"ChatGPT's script still has problems: {'; '.join(found)}")
+        paste = script.chat_fix(found)
+    msg = script_message(run.people.narrator, vid, title, paste, tries + 1)
+    store_daily.add_step(conn, vid, f"script-{tries + 1}", run.relay.send(msg), run.clock())
+    return "asked for the script" if tries == 0 else f"asked for fix {tries} of the script"
 
 
 def _ask_tara(run: Run, vid: str, title: str, sent: dict[str, str]) -> str:
@@ -211,7 +243,7 @@ def _where(conn: sqlite3.Connection, vid: str) -> str:
     sent, runs = store_daily.steps(conn, vid), store_videos.stage_runs(conn, vid)
     if store_videos.get_video(conn, vid).story_id is None:
         return "story pick"
-    if "take" not in sent:
+    if "script" not in runs or "take" not in sent:
         return "script"
     if "voice" in runs and "visuals" in runs:
         return "render and send"
