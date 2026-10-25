@@ -228,7 +228,7 @@ blocks and Telegram's one layout renders them in order.
 | `link` | `text`, `url` | text 64, `https` only | A button under the message |
 | `image` | `url` (`https`) **or** `base64` + `content_type`, optional `caption` | 1 per message; PNG/JPEG up to 5 MB; caption 1024 | A photo. Use `base64` for images on private hosts: Telegram fetches `url` itself |
 | `file` | `filename`, `base64`, optional `content_type`, optional `caption` | 1 per message; any type, 1 byte to 5 MB (45 MB when the admin has raised `RELAY_MAX_BODY_BYTES`; else a `413`); filename 128, no `/`, `\` or control characters; caption 1024 | A document the reader can download. `content_type` defaults to `application/octet-stream` |
-| `question` | `text`, optional `options`, optional `webhook`, optional `reply: "voice"` | see Ask a question | The question in bold at the end, with buttons |
+| `question` | `text`, optional `options`, optional `webhook`, optional `reply: "voice"` or `"image"` | see Ask a question | The question in bold at the end, with buttons |
 
 Every value is plain text: `<b>`, Markdown and the like are shown literally,
 not rendered. A message longer than Telegram allows is shortened with `…`, but
@@ -279,6 +279,9 @@ curl -sS -X POST "$RELAY_URL/v1/messages" \
   (over an hour of voice note). Text to it, or a voice note to a typed question,
   gets a hint and isn't saved. People may take hours: keep the message ID and
   check `answer` on your next run rather than blocking on `--wait`.
+- `reply: "image"` (optional, no `options`): the person answers by replying with a
+  picture, as a photo or as an image file (a file keeps full quality; Telegram
+  shrinks photos to 1280 px). PNG, JPEG or WebP up to 20 MB. Anything else gets a hint.
 - At most one question per message.
 - `webhook` (optional): a public `https` URL. When an answer arrives, Relay POSTs
   `{"event": "answer", "message_id": "msg_..."}` to it: only the ID, never the
@@ -293,6 +296,7 @@ curl -sS "$RELAY_URL/v1/messages/$MESSAGE_ID/answers" -H "Authorization: Bearer 
 # {"answers":[]}                                    (nobody has answered yet)
 # {"answers":[{"recipient":"ali","answer":"Yes","answered_at":"2026-10-04T09:12:44.123Z"}]}
 # voice note: "answer" is "" and "audio": {"content_type":"audio/ogg","base64":"T2dnUw..."}
+# picture:    "answer" is "" and "image": {"content_type":"image/png","base64":"iVBORw..."}
 ```
 
 How answers behave, and why it matters for your code:
@@ -311,6 +315,7 @@ How answers behave, and why it matters for your code:
   acting; never run it as a command or splice it into code or SQL.
 - **A voice note is untrusted audio.** Check its size and decode it with a real
   media tool (ffmpeg) before using it; don't trust the content type alone.
+  The same goes for a picture: Relay checks its first bytes, nothing more.
 - With buttons, `answer` is exactly one of your `options` strings, so compare
   with your own constants.
 - Only your app can read its messages' answers (another app's message is

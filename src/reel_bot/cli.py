@@ -25,6 +25,7 @@ from reel_bot import (
     store_videos,
     stories,
     videos,
+    visuals,
     visuals_write,
     voice,
     web,
@@ -59,17 +60,18 @@ def build_parser() -> argparse.ArgumentParser:
     choose.add_argument("video_id")
     choose.add_argument("story_id")
     choose.add_argument("--by", required=True, help="who chose, e.g. ali")
-    sc = sub.add_parser("script", help="write a picked video's script with Claude (cached)")
-    sc.add_argument("video_id")
+    for name, help_ in (
+        ("script", "write a picked video's script with Claude (cached)"),
+        ("captions", "time the script's words on Tara's take (cached)"),
+        ("render", "render the 1080x1920 MP4 with ffmpeg (cached)"),
+    ):
+        sub.add_parser(name, help=help_).add_argument("video_id")
     vo = sub.add_parser("voice", help="import Tara's recording: clean it and set its loudness")
     vo.add_argument("video_id")
     vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
-    ca = sub.add_parser("captions", help="time the script's words on Tara's take (cached)")
-    ca.add_argument("video_id")
-    vi = sub.add_parser("visuals", help="draw one picture per paragraph with OpenAI (cached)")
+    vi = sub.add_parser("visuals", help="show missing pictures' prompts; done once all are in")
     vi.add_argument("video_id")
-    re = sub.add_parser("render", help="render the 1080x1920 MP4 with ffmpeg (cached)")
-    re.add_argument("video_id")
+    vi.add_argument("--add", nargs=2, metavar=("N", "FILE"), help="add picture N (made in ChatGPT)")
     mk = sub.add_parser("make", help="run every stage the video is ready for (cached)")
     mk.add_argument("video_id")
     mk.add_argument("--voice", type=Path, help="Tara's new take; redoes captions and render")
@@ -158,11 +160,28 @@ def _stage(env: Mapping[str, str], name: str, action: Stage) -> int:
     return 0
 
 
+def _visuals(
+    conn: sqlite3.Connection, out: Path, vid: str, add: list[str] | None, clock: Clock
+) -> str:
+    """Add a picture by hand, then record the stage or list the missing pictures' prompts."""
+    if add:
+        n, file = add
+        if not n.isdigit():
+            raise visuals.VisualsError(f"picture number {n!r} is not a number")
+        visuals_write.add(
+            conn, out, vid, int(n), visuals_write.Made(Path(file).read_bytes(), "ali", clock())
+        )
+    missing = visuals_write.finish(conn, out, vid, clock)
+    if not missing:
+        return f"{out / vid / visuals_write.FILENAME}\tall pictures in"
+    pictures = visuals_write.plan(conn, out, vid).pictures
+    return "\n\n".join(f"picture {n} is missing:\n{pictures[n - 1].prompt}" for n in missing)
+
+
 def _stages(
     args: argparse.Namespace, env: Mapping[str, str], clock: Clock, cap: float
 ) -> dict[str, Stage]:
     vid = getattr(args, "video_id", "")
-    key = env.get("OPENAI_API_KEY", "").strip()
 
     def guard(conn: sqlite3.Connection) -> budget.Budget:
         return budget.Budget(conn, vid, cap, clock)
@@ -181,9 +200,7 @@ def _stages(
         return f"{path}\t{len(c.cues)} captions\t{c.matched:.0%} of the script heard"
 
     def visuals_(conn: sqlite3.Connection, out: Path) -> str:
-        draw = guard(conn).draw(visuals_write.openai(key))
-        v = visuals_write.make(conn, out, vid, draw, clock)
-        return f"{out / vid / visuals_write.FILENAME}\t{len(v.pictures)} pictures"
+        return _visuals(conn, out, vid, args.add, clock)
 
     def render_(conn: sqlite3.Connection, out: Path) -> str:
         r = render_write.make(conn, out, vid, clock)
@@ -196,7 +213,6 @@ def _stages(
             clock=clock,
             claude=lambda: b.claude(script_write.claude()),
             transcribe=captions_write.local,
-            draw=lambda: b.draw(visuals_write.openai(key)),
         )
         p = pipeline.advance(conn, vid, args.voice, ctx)
         lines = [f"{r.stage}\t${r.cost_usd:.3f}\t{r.seconds:.0f}s" for r in p.runs]

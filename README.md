@@ -29,10 +29,11 @@ make run ARGS="video new --framing fable --length short"   # prints a video ID
 make run ARGS="video choose VIDEO_ID STORY_ID --by ali"
 make run ARGS="script VIDEO_ID"   # Claude writes out/VIDEO_ID/script.json
 make run ARGS="voice VIDEO_ID ~/Downloads/tara.ogg"   # cleans her take into voice.wav
-make run ARGS="make VIDEO_ID"       # script, read-this.txt for Tara and pictures; then waits
+make run ARGS="make VIDEO_ID"       # script and read-this.txt for Tara; then waits for her
+make run ARGS="visuals VIDEO_ID"    # the picture prompts still missing; --add N FILE adds one
 make run ARGS="make VIDEO_ID --voice ~/Downloads/tara.ogg"   # finishes render.mp4
 make run ARGS="daily start --framing fable --length short"   # asks ali in Relay to pick a story
-make run ARGS="daily tick"          # pick -> script to Tara -> her voice note -> video back to her
+make run ARGS="daily tick"          # pick -> script and prompts to Tara -> her take and pictures -> video
 make run ARGS="auth youtube"        # once per platform: youtube, instagram, tiktok
 make run ARGS="publish VIDEO_ID"    # posts to every signed-in platform (or add --publish to make)
 # or one stage at a time:

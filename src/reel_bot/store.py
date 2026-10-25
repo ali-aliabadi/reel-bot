@@ -99,6 +99,21 @@ MIGRATIONS = (
         PRIMARY KEY (video_id, step)
     );
     """,
+    """
+    -- Tara answers each picture prompt (one per paragraph, 3 to 6) in its own message.
+    CREATE TABLE daily_steps_new (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        step TEXT NOT NULL CHECK (
+            step IN ('pick', 'take', 'sent', 'failed') OR step GLOB 'picture-[1-6]'
+        ),
+        message_id TEXT NOT NULL,  -- Relay's message ID
+        at TEXT NOT NULL,
+        PRIMARY KEY (video_id, step)
+    );
+    INSERT INTO daily_steps_new SELECT video_id, step, message_id, at FROM daily_steps;
+    DROP TABLE daily_steps;
+    ALTER TABLE daily_steps_new RENAME TO daily_steps;
+    """,
 )
 
 

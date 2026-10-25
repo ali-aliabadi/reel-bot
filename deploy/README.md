@@ -4,12 +4,13 @@ The daily run is two systemd timers (units in `systemd/`):
 
 - `reel-bot-daily-start.timer` at 08:00 asks ali in Relay to pick one of three stories.
 - `reel-bot-daily-tick.timer` every 5 minutes records the pick, makes the script and
-  pictures, asks Tara for her voice note, renders it and sends her (and ali) the MP4.
+  sends Tara the script and the picture prompts, collects her voice note and pictures,
+  renders the video and sends her (and ali) the MP4.
 
 Before installing: the Phase 0 VPS steps in `docs/ROADMAP.md` are done (checkout in
-`/opt/reel-bot`, `make tools`, `make models` for the captions' Whisper model, `.env` with the Relay, Anthropic and OpenAI keys and
+`/opt/reel-bot`, `make tools`, `make models` for the captions' Whisper model, `.env` with the Relay and Anthropic keys and
 `REEL_BOT_NARRATOR`), `make run ARGS=config` is clean, and Relay accepts files up to
-45 MB: Relay with the 45 MB file limit, `RELAY_MAX_BODY_BYTES=67108864` in `/opt/relay/.env`,
+45 MB and takes picture answers: Relay with the 45 MB file limit and `reply: "image"` questions, `RELAY_MAX_BODY_BYTES=67108864` in `/opt/relay/.env`,
 and `RELAY_URL=http://127.0.0.1:18080` in reel-bot's `.env` so the videos skip nginx and
 Cloudflare.
 

@@ -20,6 +20,9 @@ FONT = "DejaVu Sans"  # Ubuntu's fonts-dejavu-core; free licence, commercial use
 FONT_SIZE = 84
 CAPTION_MARGIN = 420  # px from the bottom, above the Shorts buttons and title
 CRF, PRESET, THREADS = 20, "medium", 2  # two threads leave a core for Relay on the VPS
+# x264 looks 10 frames ahead instead of 40: about 200 MB less at 1080x1920 (636 -> 438 MB on
+# the VPS), which the tick's 700 MB cap needs; slow pans over still pictures lose nothing.
+LOOKAHEAD = 10
 
 
 class RenderError(Exception):
@@ -107,6 +110,7 @@ def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str)
     graph.append(f"{joined}concat=n={len(shots)}:v=1:a=0,ass={captions_file}[out]")
     args += ["-filter_complex", ";".join(graph), "-map", "[out]", "-map", f"{len(shots)}:a"]
     args += ["-c:v", "libx264", "-preset", PRESET, "-crf", str(CRF), "-threads", str(THREADS)]
+    args += ["-x264-params", f"rc-lookahead={LOOKAHEAD}"]
     args += ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", out]
     return args
 
