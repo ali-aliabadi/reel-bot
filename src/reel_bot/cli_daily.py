@@ -13,6 +13,7 @@ from reel_bot import (
     captions_write,
     config,
     daily,
+    daily_run,
     pipeline,
     relay_api,
     script_write,
@@ -56,7 +57,7 @@ def _context(
 
 def _run(
     conn: sqlite3.Connection, env: Mapping[str, str], clock: Callable[[], datetime], cap: float
-) -> daily.Run:
+) -> daily_run.Run:
     cfg = config.load(env)
     narrator = env.get("REEL_BOT_NARRATOR", "").strip()
     if not narrator:
@@ -64,8 +65,8 @@ def _run(
     relay = relay_api.Relay(
         cfg.relay_url, cfg.relay_api_key, cfg.relay_app, web.Web(RELAY_TIMEOUT_S)
     )
-    people = daily.People(cfg.relay_user, narrator)
-    return daily.Run(conn, relay, people, clock, _context(conn, env, clock, cap))
+    people = daily_run.People(cfg.relay_user, narrator)
+    return daily_run.Run(conn, relay, people, clock, _context(conn, env, clock, cap))
 
 
 def main(
@@ -78,7 +79,7 @@ def main(
     if args.action == "retry":
         try:
             daily.retry(conn, args.video_id)
-        except daily.DailyError as err:
+        except daily_run.DailyError as err:
             print(f"daily: {err}", file=sys.stderr)
             return EXIT_REFUSED
         print(f"{args.video_id}\treopened; the next tick carries on")
@@ -95,7 +96,7 @@ def main(
         return 0
     try:
         vid = daily.start(run, args.framing, args.length, random.SystemRandom())
-    except (daily.DailyError, relay_api.RelayError, web.WebError, store.StoreError) as err:
+    except (daily_run.DailyError, relay_api.RelayError, web.WebError, store.StoreError) as err:
         print(f"daily: {err}", file=sys.stderr)
         return EXIT_REFUSED
     print(vid or "an earlier pick is still unanswered; nothing sent")
