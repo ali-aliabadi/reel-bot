@@ -10,7 +10,7 @@ should be one small PR unless noted. Design details are in
 - [ ] Add the GitHub remote to the local checkout and push the first commit to `master`
 - [ ] Protect `master` (require PRs and the `make check` status)
 - [ ] Check the VPS's memory before installing: `vmware-toolbox-cmd stat balloon` and `grep -E "Slab|SUnreclaim" /proc/meminfo`
-- [ ] On the VPS: clone to `/opt/reel-bot`, install `uv`, `ffmpeg` and the caption font (`apt install ffmpeg fonts-dejavu-core`), then `make tools`
+- [ ] On the VPS: clone to `/opt/reel-bot`, install `uv`, `ffmpeg` and the caption font (`apt install ffmpeg fonts-dejavu-core`), then `make tools` and `make models`
 - [ ] Create a Relay client: `relay clients create reel-bot`; put the key in `.env` (never in git)
 - [x] Create the fables channel on the work Gmail (one channel, not three)
 - [ ] Create a Google Cloud project, enable YouTube Data API v3 and YouTube Analytics API, add a "Desktop app" OAuth client, set the consent screen to In production, then `reel-bot auth youtube`; file the upload audit
@@ -18,7 +18,7 @@ should be one small PR unless noted. Design details are in
 - [ ] TikTok: create an app with Login Kit and the Content Posting API (Direct Post), register the redirect URI, `reel-bot auth tiktok`; apply for the audit
 - [ ] Anthropic API key in the VPS's `.env` for scripts
 - [x] Choose the picture source: OpenAI image API
-- [ ] OpenAI API key, with a monthly limit, in the VPS's `.env` (captions and pictures)
+- [ ] OpenAI API key, with a monthly limit, in the VPS's `.env` (pictures)
 
 ## Phase 1: skeleton and tooling
 
@@ -41,7 +41,7 @@ should be one small PR unless noted. Design details are in
 - [x] Video IDs (`vid_` + ULID), the `videos` table and the on-disk cache under `out/<id>/`
 - [x] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
 - [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
-- [x] `captions` stage: word timings from OpenAI transcription aligned to the script, caption cues and part timings (burned in by `render`)
+- [x] `captions` stage: word timings from Whisper on the machine (`faster-whisper`, free) aligned to the script, caption cues and part timings (burned in by `render`)
 - [x] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests; each picture recorded in `assets`
 - [x] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
 - [x] `reel-bot make <video id> [--voice <file>]` runs every stage the video is ready for, stops for the pick and for Tara's take, and prints cost and time per stage

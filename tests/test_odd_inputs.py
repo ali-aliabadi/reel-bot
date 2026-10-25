@@ -85,7 +85,7 @@ def parse_script(raw: bytes) -> object:
         (
             captions_write.parse,
             captions.CaptionsError,
-            {"duration": 3.0, "words": [{"word": "fox", "start": 0.1, "end": 0.4}]},
+            {"duration": 3.0, "words": [["fox", 0.1, 0.4]]},
         ),
         (visuals_write.parse, VisualsError, {"data": [{"b64_json": "iVBORw0KGgo="}]}),
         (
@@ -117,12 +117,7 @@ def test_parsers_raise_only_their_own_error(
 
 
 def test_transcription_times_are_checked() -> None:
-    bad = [
-        {"word": "a", "start": float("nan"), "end": 1.0},
-        {"word": "a", "start": -1.0, "end": 1.0},
-        {"word": "a", "start": 2.0, "end": 1.0},
-        {"word": "a", "start": 0.0, "end": float("inf")},
-    ]
+    bad = [["a", float("nan"), 1.0], ["a", -1.0, 1.0], ["a", 2.0, 1.0], ["a", 0.0, float("inf")]]
     for w in bad:
         with pytest.raises(captions.CaptionsError):
             captions_write.parse(json.dumps({"duration": 3.0, "words": [w]}).encode())

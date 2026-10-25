@@ -21,6 +21,10 @@ tools: ## install Python, the locked dev tools and gitleaks (run once)
 	uv sync --locked
 	scripts/install-gitleaks.sh $(GITLEAKS_VERSION) $(TOOLS)
 
+.PHONY: models
+models: ## download the Whisper model for captions into models/ (run once; about 150 MB)
+	uv run python -c "from faster_whisper import download_model; from reel_bot.captions_write import MODEL, MODEL_DIR; download_model(MODEL, output_dir=str(MODEL_DIR))"
+
 .PHONY: run
 run: ## run the CLI (reads .env if present), e.g. make run ARGS=version
 	set -a; [ -f .env ] && . ./.env; set +a; uv run reel-bot $(ARGS)

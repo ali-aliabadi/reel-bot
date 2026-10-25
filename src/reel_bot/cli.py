@@ -176,8 +176,7 @@ def _stages(
         return f"{v.path}\t{v.seconds:.1f} s"
 
     def captions_(conn: sqlite3.Connection, out: Path) -> str:
-        transcribe = guard(conn).transcribe(captions_write.openai(key))
-        c = captions_write.make(conn, out, vid, transcribe, clock)
+        c = captions_write.make(conn, out, vid, captions_write.local(), clock)
         path = out / vid / captions_write.FILENAME
         return f"{path}\t{len(c.cues)} captions\t{c.matched:.0%} of the script heard"
 
@@ -196,7 +195,7 @@ def _stages(
             out_dir=out,
             clock=clock,
             claude=lambda: b.claude(script_write.claude()),
-            transcribe=lambda: b.transcribe(captions_write.openai(key)),
+            transcribe=captions_write.local,
             draw=lambda: b.draw(visuals_write.openai(key)),
         )
         p = pipeline.advance(conn, vid, args.voice, ctx)

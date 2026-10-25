@@ -10,14 +10,12 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
-from reel_bot import captions_write, script_write, store_videos, visuals_write
+from reel_bot import script_write, store_videos, visuals_write
 
 # Worst-case cost of one call, checked before it is made.
 SCRIPT_USD = 0.35  # 16k output tokens at the fallback model's price
-TRANSCRIBE_USD = 0.02  # over 3 minutes of audio
 PICTURE_USD = visuals_write.PRICE_PER_IMAGE
 
 
@@ -54,15 +52,6 @@ class Budget:
             reply = generate(system, user, schema)
             self.record("script", reply.cost_usd())
             return reply
-
-        return call
-
-    def transcribe(self, transcribe: captions_write.Transcribe) -> captions_write.Transcribe:
-        def call(audio: Path, prompt: str) -> captions_write.Heard:
-            self.allow("a transcription", TRANSCRIBE_USD)
-            heard = transcribe(audio, prompt)
-            self.record("captions", heard.cost_usd())
-            return heard
 
         return call
 

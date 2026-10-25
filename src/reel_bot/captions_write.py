@@ -1,31 +1,33 @@
 """Captions stage, I/O edge: transcribe Tara's take with word times, align it.
 
-OpenAI's transcription API gives the word times (so captions need no model on
-the machine and can later run on the VPS). The call uses the stdlib only: one
-multipart POST through `openai_api`. `make` is idempotent: a
-recorded captions stage with its file on disk is reused without another call.
+Whisper runs on this machine, free and offline: `reel_bot.whisper` in a child
+process at low priority, reading the model from `MODEL_DIR` (`make models` fills
+it once). A child process gives all of Whisper's memory back before the render
+starts, and can be timed out. `make` is idempotent: a recorded captions stage
+with its file on disk is reused without transcribing again.
 """
 
 import json
 import logging
 import math
+import shutil
 import sqlite3
-import time
+import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from reel_bot import captions, openai_api, script, store_videos, videos, voice
+from reel_bot import captions, script, store_videos, videos, voice
 
 log = logging.getLogger(__name__)
 
-MODEL = "whisper-1"  # the transcription model that returns word timestamps
-PRICE_PER_MINUTE = 0.006  # US dollars
-MAX_UPLOAD_BYTES = 25 << 20  # the API's file limit
-TIMEOUT_S = 120.0
-PROMPT_WORDS = 150  # the API reads only the prompt's last ~224 tokens
+MODEL = "base.en"  # English-only Whisper, small enough for the VPS (about 430 MB while it runs)
+MODEL_DIR = Path("models") / f"whisper-{MODEL}"  # relative to the checkout; see `make models`
+WHISPER = [sys.executable, "-m", "reel_bot.whisper"]  # + model dir and audio file
+TIMEOUT_S = 900  # a 50 s take takes about 90 s on the VPS
 MIN_MATCH = 0.5  # below this the take is not a reading of this script
 WARN_MATCH = 0.85
 FILENAME = "captions.json"
@@ -34,56 +36,48 @@ FILENAME = "captions.json"
 @dataclass(frozen=True)
 class Heard:
     words: tuple[captions.Word, ...]
-    seconds: float  # audio length the API billed
-
-    def cost_usd(self) -> float:
-        return self.seconds / 60 * PRICE_PER_MINUTE
+    seconds: float  # the audio's length
 
 
-# (audio file, prompt with the expected text) -> what the API heard
-Transcribe = Callable[[Path, str], Heard]
+# audio file -> what Whisper heard
+Transcribe = Callable[[Path], Heard]
 
 
 def parse(raw: bytes) -> Heard:
+    """What `reel_bot.whisper` printed; anything odd raises CaptionsError."""
     try:
         data = cast(dict[str, Any], json.loads(raw))
         words = tuple(
-            captions.Word(str(w["word"]).strip(), float(w["start"]), float(w["end"]))
-            for w in cast(list[dict[str, Any]], data.get("words") or [])
+            captions.Word(str(w).strip(), float(start), float(end))
+            for w, start, end in cast(list[list[Any]], data["words"])
         )
         seconds = float(data["duration"])
     except (ValueError, KeyError, IndexError, TypeError, AttributeError, RecursionError) as err:
-        raise captions.CaptionsError("the transcription reply has no word times") from err
+        raise captions.CaptionsError("Whisper's output has no word times") from err
     if not 0 <= seconds < math.inf or any(not 0 <= w.start <= w.end < math.inf for w in words):
-        raise captions.CaptionsError("the transcription reply has impossible word times")
+        raise captions.CaptionsError("Whisper's output has impossible word times")
     return Heard(words, seconds)
 
 
-def openai(
-    api_key: str,
-    base_url: str = openai_api.API_URL,
-    sleep: Callable[[float], None] = time.sleep,
-) -> Transcribe:
-    """A Transcribe backed by OpenAI. A plain http base URL is allowed only for a
-    local test server."""
-    try:
-        client = openai_api.Client(api_key, base_url, TIMEOUT_S, sleep)
-    except openai_api.OpenAIError as err:
-        raise captions.CaptionsError(str(err)) from err
+def local(model_dir: Path = MODEL_DIR, timeout_s: float = TIMEOUT_S) -> Transcribe:
+    """A Transcribe running Whisper on this machine, in a child process."""
+    if not (model_dir / "model.bin").is_file():
+        raise captions.CaptionsError(f"no Whisper model in {model_dir}: run make models")
 
-    def transcribe(audio: Path, prompt: str) -> Heard:
-        fields = [
-            ("model", MODEL),
-            ("language", "en"),
-            ("response_format", "verbose_json"),
-            ("timestamp_granularities[]", "word"),
-            ("prompt", prompt),
-        ]
-        body, ctype = openai_api.form(fields, "voice.wav", "audio/wav", audio.read_bytes())
+    def transcribe(audio: Path) -> Heard:
+        args = [*WHISPER, str(model_dir), str(audio)]
+        if shutil.which("nice"):
+            args = ["nice", "-n", "10", *args]
         try:
-            return parse(client.post("/audio/transcriptions", body, ctype, "transcription"))
-        except openai_api.OpenAIError as err:
-            raise captions.CaptionsError(str(err)) from err
+            done = subprocess.run(args, capture_output=True, timeout=timeout_s, check=True)  # noqa: S603
+        except subprocess.CalledProcessError as err:
+            last = err.stderr.decode(errors="replace").strip().splitlines()[-1:]
+            raise captions.CaptionsError(
+                f"Whisper exited {err.returncode}: {''.join(last)}"
+            ) from err
+        except subprocess.TimeoutExpired as err:
+            raise captions.CaptionsError(f"Whisper took over {timeout_s:.0f} s") from err
+        return parse(done.stdout)
 
     return transcribe
 
@@ -106,13 +100,11 @@ def make(
     if "voice" not in runs:
         raise captions.CaptionsError(f"video {video_id} has no voice take yet")
     take = folder / voice.FILENAME
-    if take.stat().st_size > MAX_UPLOAD_BYTES:
-        raise captions.CaptionsError(f"the take is over {MAX_UPLOAD_BYTES >> 20} MB")
     s = script.from_json((folder / "script.json").read_text(encoding="utf-8"))
 
     started = clock()
-    heard = transcribe(take, " ".join(s.spoken().split()[:PROMPT_WORDS]))
-    built = captions.build(video_id, s, heard.words)
+    got = transcribe(take)
+    built = captions.build(video_id, s, got.words)
     extra = {"video_id": video_id, "matched": round(built.matched, 2)}
     if built.matched < MIN_MATCH:
         raise captions.CaptionsError(
@@ -126,11 +118,10 @@ def make(
     tmp.write_text(raw, encoding="utf-8")
     tmp.replace(path)
     finished = clock()
-    cost = round(heard.cost_usd(), 4)
     store_videos.record_stage(
         conn,
         video_id,
-        videos.StageRun("captions", FILENAME, cost, (finished - started).total_seconds(), finished),
+        videos.StageRun("captions", FILENAME, 0.0, (finished - started).total_seconds(), finished),
     )
-    log.info("captions made", extra={**extra, "cues": len(built.cues), "cost_usd": cost})
+    log.info("captions made", extra={**extra, "cues": len(built.cues)})
     return captions.from_json(raw)  # as stored, so a rerun returns the same value

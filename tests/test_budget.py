@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 
 from reel_bot import budget, config, store, store_videos, videos
-from reel_bot.captions_write import Heard
 from reel_bot.script_write import Reply
 from reel_bot.videos import Video
 from reel_bot.visuals_write import Drawn
@@ -49,18 +48,13 @@ def test_wrappers_refuse_before_calling_and_record_after(conn: sqlite3.Connectio
         calls.append("draw")
         return Drawn(b"png", 0.063)
 
-    def transcribe(audio: Path, prompt: str) -> Heard:
-        calls.append("transcribe")
-        return Heard((), 60.0)
-
     b.claude(claude)("s", "u", {})
     b.draw(draw)("p")
-    b.transcribe(transcribe)(Path("voice.wav"), "")
-    assert calls == ["claude", "draw", "transcribe"]
-    assert b.spent() == pytest.approx(0.14 + 0.063 + 0.006)
+    assert calls == ["claude", "draw"]
+    assert b.spent() == pytest.approx(0.14 + 0.063)
     with pytest.raises(budget.BudgetError, match="a script"):
-        b.claude(claude)("s", "u", {})  # $0.21 spent + $0.35 worst case > $0.40
-    assert calls == ["claude", "draw", "transcribe"]
+        b.claude(claude)("s", "u", {})  # $0.20 spent + $0.35 worst case > $0.40
+    assert calls == ["claude", "draw"]
 
 
 @pytest.mark.parametrize(

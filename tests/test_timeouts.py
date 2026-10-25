@@ -2,6 +2,7 @@
 hanging the run (the rule in .claude/skills/reel-bot-review)."""
 
 import shutil
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -11,7 +12,16 @@ from typing import Any
 
 import pytest
 
-from reel_bot import openai_api, relay_api, render, render_write, voice, web
+from reel_bot import (
+    captions,
+    captions_write,
+    openai_api,
+    relay_api,
+    render,
+    render_write,
+    voice,
+    web,
+)
 
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which("ffmpeg") is None, reason="ffmpeg not installed; the process timeout tests need it"
@@ -63,6 +73,15 @@ def test_openai_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str
 def test_render_ffmpeg_times_out(tmp_path: Path) -> None:
     with pytest.raises(render.RenderError, match="took over"):
         render_write._run(ENDLESS, tmp_path, 0.5)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_whisper_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        captions_write, "WHISPER", [sys.executable, "-c", "import time; time.sleep(60)"]
+    )
+    (tmp_path / "model.bin").write_bytes(b"")
+    with pytest.raises(captions.CaptionsError, match="took over"):
+        captions_write.local(tmp_path, timeout_s=0.5)(tmp_path / "voice.wav")
 
 
 @needs_ffmpeg

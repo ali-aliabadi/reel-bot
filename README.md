@@ -22,6 +22,7 @@ Needs macOS or Linux with [uv](https://docs.astral.sh/uv/) and ffmpeg.
 ```bash
 brew install uv ffmpeg     # once (on the VPS: apt install ffmpeg fonts-dejavu-core, and uv's installer)
 make tools                 # Python 3.12, locked dev tools, gitleaks
+make models                # the Whisper model for captions, into models/ (about 150 MB)
 cp .env.example .env       # then fill in the keys
 make run ARGS=config    # checks .env, never prints the key
 make run ARGS="video new --framing fable --length short"   # prints a video ID
