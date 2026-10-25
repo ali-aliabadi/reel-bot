@@ -132,6 +132,19 @@ def picture_message(
     }
 
 
+def again(message: dict[str, object], attempt: int, problem: str) -> dict[str, object]:
+    """The same question sent again (attempt 2, 3, …) because its answer couldn't be
+    used: Relay locks an answer once read, so a new answer needs a new message."""
+    blocks = cast(list[object], message["blocks"])
+    note = f"That didn't work: {problem}. Please send it again."
+    return {
+        **message,
+        "title": f"Again: {message['title']}"[:256],
+        "idempotency_key": f"{message['idempotency_key']}-{attempt}",
+        "blocks": [{"type": "text", "text": note[:MAX_TEXT]}, *blocks],
+    }
+
+
 def file_message(to: list[str], video_id: str, title: str, path: Path) -> dict[str, object]:
     size = path.stat().st_size
     if not 0 < size <= MAX_FILE_BYTES:

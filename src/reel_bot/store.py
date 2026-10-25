@@ -130,6 +130,17 @@ MIGRATIONS = (
     DROP TABLE daily_steps;
     ALTER TABLE daily_steps_new RENAME TO daily_steps;
     """,
+    """
+    -- A question is asked again when its answer can't be used (Relay locks an
+    -- answer once read, so a new answer needs a new message).
+    ALTER TABLE daily_steps ADD COLUMN asks INTEGER NOT NULL DEFAULT 1;
+    -- Errors in a row per daily video: retried on the next tick, stopped after a few.
+    CREATE TABLE daily_errors (
+        video_id TEXT PRIMARY KEY REFERENCES videos (id),
+        count INTEGER NOT NULL CHECK (count > 0),
+        at TEXT NOT NULL
+    );
+    """,
 )
 
 

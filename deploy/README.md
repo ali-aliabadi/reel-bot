@@ -22,6 +22,7 @@ systemctl list-timers 'reel-bot-*'
 journalctl -u reel-bot-daily-tick -n 50     # what the last ticks did
 ```
 
-A failure sends ali a high-urgency Relay alert naming the video and the step; fix the
+An error is retried on the next tick; the third in a row stops the video and sends the
+picker (`RELAY_USER`) a high-urgency Relay alert naming the video and the step; fix the
 cause, then `make run ARGS="daily retry VIDEO_ID"`. To stop: `sudo systemctl disable --now
 reel-bot-daily-start.timer reel-bot-daily-tick.timer`.

@@ -46,6 +46,11 @@ class VoiceError(Exception):
     pass
 
 
+class BadRecording(VoiceError):
+    """The recording itself can't be used (no audio, unreadable, silent, too big):
+    ask for a new one rather than retrying it."""
+
+
 @dataclass(frozen=True)
 class Voice:
     video_id: str
@@ -115,7 +120,7 @@ def _check_not_silent(trimmed: Path) -> None:
         seconds = 0.0  # trimming left no audio at all
     if seconds < MIN_SECONDS:
         trimmed.unlink(missing_ok=True)
-        raise VoiceError(f"the take is silent: under {MIN_SECONDS:.0f} s of sound after trimming")
+        raise BadRecording(f"the take is silent: under {MIN_SECONDS:.0f} s of sound after trimming")
 
 
 def import_take(
@@ -133,8 +138,13 @@ def import_take(
     if not take.is_file():
         raise VoiceError(f"no recording at {take}")
     if take.stat().st_size > MAX_INPUT_BYTES:
-        raise VoiceError(f"the recording is over {MAX_INPUT_BYTES >> 20} MB")
-    duration(_run(probe_args(take)))  # refuse a file with no audio before cleaning
+        raise BadRecording(f"the recording is over {MAX_INPUT_BYTES >> 20} MB")
+    if shutil.which("ffprobe") is None:
+        raise VoiceError("ffprobe is not installed")
+    try:  # refuse a file with no audio before cleaning
+        duration(_run(probe_args(take)))
+    except VoiceError as err:
+        raise BadRecording("the recording could not be read as audio") from err
 
     started = clock()
     folder = videos.video_dir(out_dir, video_id)
