@@ -1,11 +1,9 @@
-import json
+import shutil
 import sqlite3
-import threading
-from collections.abc import Iterator
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -57,22 +55,19 @@ def voiced(conn: sqlite3.Connection, out: Path, with_voice: bool = True) -> tupl
 class Fake:
     def __init__(self, words: list[str]) -> None:
         self.words = words
-        self.prompts: list[str] = []
 
-    def __call__(self, audio: Path, prompt: str) -> Heard:
+    def __call__(self, audio: Path) -> Heard:
         assert audio.name == "voice.wav"
-        self.prompts.append(prompt)
         return Heard(tuple(Word(w, i * 0.4, i * 0.4 + 0.3) for i, w in enumerate(self.words)), 60)
 
 
-def test_makes_caches_and_records_cost(conn: sqlite3.Connection, tmp_path: Path) -> None:
+def test_makes_caches_and_records_the_stage(conn: sqlite3.Connection, tmp_path: Path) -> None:
     v, s = voiced(conn, tmp_path / "out")
     fake = Fake([w.strip(".,").lower() for w in s.spoken().split()])
     c = captions_write.make(conn, tmp_path / "out", v.id, fake, Clock())
     assert c.matched == 1.0
-    assert fake.prompts == [" ".join(s.spoken().split())]
     run = store_videos.stage_runs(conn, v.id)["captions"]
-    assert (run.cost_usd, run.seconds) == (0.006, 2)
+    assert (run.cost_usd, run.seconds) == (0.0, 2)
     assert captions_write.make(conn, tmp_path / "out", v.id, Fake([]), Clock()) == c
 
 
@@ -89,87 +84,45 @@ def test_needs_the_voice_stage(conn: sqlite3.Connection, tmp_path: Path) -> None
         captions_write.make(conn, tmp_path / "out", v.id, Fake([]), Clock())
 
 
-def test_parse_rejects_a_reply_without_times() -> None:
+def test_parse_reads_whisper_output() -> None:
+    raw = b'{"duration": 3, "words": [[" Fox", 0.1, 0.4]]}'
+    assert captions_write.parse(raw) == Heard((Word("Fox", 0.1, 0.4),), 3.0)
     with pytest.raises(captions.CaptionsError):
         captions_write.parse(b'{"text": "hi"}')
-    assert captions_write.parse(b'{"duration": 3, "words": []}') == Heard((), 3.0)
 
 
-def test_openai_needs_https_and_a_key() -> None:
-    with pytest.raises(captions.CaptionsError, match="https"):
-        captions_write.openai("k", "http://example.com/v1")
-    with pytest.raises(captions.CaptionsError, match="OPENAI_API_KEY"):
-        captions_write.openai("")
+def test_local_needs_the_model(tmp_path: Path) -> None:
+    with pytest.raises(captions.CaptionsError, match="make models"):
+        captions_write.local(tmp_path / "no-model")
 
 
-class _FakeAPI(BaseHTTPRequestHandler):
-    """Answers POST /v1/audio/transcriptions like OpenAI; fails the first `fail` calls."""
-
-    fail: list[int] = []  # noqa: RUF012
-    seen: list[dict[str, Any]] = []  # noqa: RUF012
-
-    def do_POST(self) -> None:
-        body = self.rfile.read(int(self.headers["content-length"]))
-        type(self).seen.append(
-            {"path": self.path, "auth": self.headers["authorization"], "body": body}
-        )
-        if type(self).fail:
-            self.send_response(type(self).fail.pop(0))
-            self.send_header("content-length", "0")
-            self.end_headers()
-            return
-        out = json.dumps(
-            {"duration": 30.0, "words": [{"word": " Fox", "start": 0.1, "end": 0.4}]}
-        ).encode()
-        self.send_response(200)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(out)))
-        self.end_headers()
-        self.wfile.write(out)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        pass
+def fake_whisper(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, code: str) -> Path:
+    """Stand in for `reel_bot.whisper` with a Python one-liner; returns a model dir."""
+    monkeypatch.setattr(captions_write, "WHISPER", [sys.executable, "-c", code])
+    (tmp_path / "model.bin").write_bytes(b"")
+    return tmp_path
 
 
-@pytest.fixture
-def api() -> Iterator[str]:
-    _FakeAPI.fail, _FakeAPI.seen = [], []
-    server = HTTPServer(("127.0.0.1", 0), _FakeAPI)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}/v1"
-    server.shutdown()
+def test_local_reads_the_child_output(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    code = 'import sys; print(\'{"duration": 2, "words": [[" Fox", 0.1, 0.4]]}\')'
+    model = fake_whisper(monkeypatch, tmp_path, code)
+    assert captions_write.local(model)(tmp_path / "voice.wav") == Heard((Word("Fox", 0.1, 0.4),), 2)
 
 
-def test_openai_sends_a_multipart_request(api: str, tmp_path: Path) -> None:
+def test_local_reports_a_failed_child(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    model = fake_whisper(monkeypatch, tmp_path, "import sys; sys.exit('no audio stream')")
+    with pytest.raises(captions.CaptionsError, match="exited 1: no audio stream"):
+        captions_write.local(model)(tmp_path / "voice.wav")
+
+
+@pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or not (captions_write.MODEL_DIR / "model.bin").is_file(),
+    reason="needs ffmpeg and the Whisper model (make models)",
+)
+def test_local_transcribes_a_wav(tmp_path: Path) -> None:
     audio = tmp_path / "voice.wav"
-    audio.write_bytes(b"RIFF-audio")
-    heard = captions_write.openai("sk-test", api)(audio, "A fox wanted grapes.")
-    assert heard == Heard((Word("Fox", 0.1, 0.4),), 30.0)
-    seen = _FakeAPI.seen[0]
-    assert seen["path"] == "/v1/audio/transcriptions"
-    assert seen["auth"] == "Bearer sk-test"
-    for part in (b"whisper-1", b"timestamp_granularities[]", b"verbose_json", b"RIFF-audio"):
-        assert part in seen["body"]
-
-
-def test_openai_retries_server_errors_then_gives_up(api: str, tmp_path: Path) -> None:
-    audio = tmp_path / "voice.wav"
-    audio.write_bytes(b"RIFF")
-    slept: list[float] = []
-    _FakeAPI.fail = [503, 429]
-    assert captions_write.openai("k", api, slept.append)(audio, "").seconds == 30.0
-    assert slept == [2.0, 4.0]
-    _FakeAPI.fail = [500, 500, 500]
-    with pytest.raises(captions.CaptionsError, match="HTTP 500"):
-        captions_write.openai("k", api, slept.append)(audio, "")
-    _FakeAPI.fail = [401]
-    with pytest.raises(captions.CaptionsError, match="HTTP 401"):
-        captions_write.openai("k", api, slept.append)(audio, "")
-
-
-def test_openai_reports_a_dead_server(tmp_path: Path) -> None:
-    audio = tmp_path / "voice.wav"
-    audio.write_bytes(b"RIFF")
-    t = captions_write.openai("k", "http://127.0.0.1:9/v1", lambda _: None)
-    with pytest.raises(captions.CaptionsError, match="URLError"):
-        t(audio, "")
+    silence = ["-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono", "-t", "2", str(audio)]
+    subprocess.run(["ffmpeg", "-loglevel", "error", *silence], check=True)  # noqa: S603, S607
+    got = captions_write.local()(audio)
+    assert got.seconds == pytest.approx(2.0, abs=0.1)
+    assert all(0 <= w.start <= w.end <= got.seconds + 0.5 for w in got.words)

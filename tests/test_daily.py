@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from reel_bot import daily, pipeline, store, store_daily, store_videos, stories, web
+from reel_bot import daily, pipeline, script, store, store_daily, store_videos, stories, web
 from reel_bot.captions import Word
 from reel_bot.captions_write import Heard
 from reel_bot.relay_api import Answer, RelayError
@@ -80,8 +80,8 @@ class Calls:
     def draw(self, prompt: str) -> Drawn:
         return Drawn(self.png, 0.05)
 
-    def transcribe(self, audio: Path, prompt: str) -> Heard:
-        said = prompt.split()
+    def transcribe(self, audio: Path) -> Heard:
+        said = script.from_json((audio.parent / "script.json").read_text()).spoken().split()
         step = 5.0 / len(said)
         return Heard(tuple(Word(w, i * step, (i + 1) * step) for i, w in enumerate(said)), 6.0)
 

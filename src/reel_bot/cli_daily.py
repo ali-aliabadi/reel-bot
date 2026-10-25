@@ -50,7 +50,7 @@ def _context(
             out_dir=out,
             clock=clock,
             claude=lambda: b.claude(script_write.claude()),
-            transcribe=lambda: b.transcribe(captions_write.openai(key)),
+            transcribe=captions_write.local,
             draw=lambda: b.draw(visuals_write.openai(key)),
         )
 
