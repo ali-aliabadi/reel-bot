@@ -8,13 +8,13 @@ from typing import Any
 
 import pytest
 
-from reel_bot import pipeline, script, store, store_videos, videos
+from reel_bot import pipeline, script, store, store_videos, videos, visuals_write
 from reel_bot.captions import Word
 from reel_bot.captions_write import Heard
 from reel_bot.script_write import Reply
 from reel_bot.stories import Story
 from reel_bot.videos import Video
-from reel_bot.visuals_write import Drawn
+from reel_bot.visuals_write import Made
 
 NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 FOX = Story("aesop-fox", "fox-and-grapes", "The Fox and the Grapes", "Aesop", "Townsend", "p. 1")
@@ -43,19 +43,14 @@ class Clock:
 
 
 class Calls:
-    """Fake paid clients that count their calls; `png` is what draw returns."""
+    """Fake clients that count their calls."""
 
-    def __init__(self, png: bytes) -> None:
-        self.png = png
-        self.count: dict[str, int] = {"claude": 0, "transcribe": 0, "draw": 0}
+    def __init__(self) -> None:
+        self.count: dict[str, int] = {"claude": 0, "transcribe": 0}
 
     def claude(self, system: str, user: str, schema: dict[str, Any]) -> Reply:
         self.count["claude"] += 1
         return Reply(SCRIPT, "claude-opus-5-5", 1000, 1000)
-
-    def draw(self, prompt: str) -> Drawn:
-        self.count["draw"] += 1
-        return Drawn(self.png, 0.05)
 
     def transcribe(self, audio: Path) -> Heard:
         self.count["transcribe"] += 1
@@ -64,9 +59,7 @@ class Calls:
         return Heard(tuple(Word(w, i * step, (i + 1) * step) for i, w in enumerate(said)), 6.0)
 
     def context(self, out: Path) -> pipeline.Context:
-        return pipeline.Context(
-            out, Clock(), lambda: self.claude, lambda: self.transcribe, lambda: self.draw
-        )
+        return pipeline.Context(out, Clock(), lambda: self.claude, lambda: self.transcribe)
 
 
 def unreachable() -> Any:
@@ -88,9 +81,14 @@ def new_video(conn: sqlite3.Connection, picked: bool = True) -> Video:
     return v
 
 
+def add_pictures(conn: sqlite3.Connection, out: Path, vid: str, png: bytes) -> None:
+    for n in range(1, 5):
+        visuals_write.add(conn, out, vid, n, Made(png, "tara", NOW))
+
+
 def test_waits_for_the_pick_then_for_tara(conn: sqlite3.Connection, tmp_path: Path) -> None:
     out = tmp_path / "out"
-    calls = Calls(b"\x89PNG\r\n\x1a\nfake")
+    calls = Calls()
     bare = new_video(conn, picked=False)
     p = pipeline.advance(conn, bare.id, None, calls.context(out))
     assert p.waiting.startswith("a story pick")
@@ -98,16 +96,21 @@ def test_waits_for_the_pick_then_for_tara(conn: sqlite3.Connection, tmp_path: Pa
 
     v = new_video(conn)
     p = pipeline.advance(conn, v.id, None, calls.context(out))
-    assert [r.stage for r in p.runs] == ["script", "visuals"]
+    assert [r.stage for r in p.runs] == ["script"]
     assert p.waiting.startswith("Tara's take of")
+    assert p.waiting.endswith(f"and pictures 1, 2, 3, 4 (prompts: reel-bot visuals {v.id})")
     assert p.render is None
-    assert p.cost_usd() == pytest.approx(0.024 + 0.2)
+    assert p.cost_usd() == pytest.approx(0.024)
     read = (out / v.id / pipeline.READ_FILE).read_text(encoding="utf-8")
     assert read.startswith("A hungry fox found grapes")
-    assert calls.count == {"claude": 1, "transcribe": 0, "draw": 4}
+    assert calls.count == {"claude": 1, "transcribe": 0}
 
-    cached = pipeline.Context(out, Clock(), unreachable, unreachable, unreachable)
-    assert pipeline.advance(conn, v.id, None, cached).runs == p.runs
+    add_pictures(conn, out, v.id, b"\x89PNG\r\n\x1a\nfake")
+    cached = pipeline.Context(out, Clock(), unreachable, unreachable)
+    p = pipeline.advance(conn, v.id, None, cached)
+    assert [r.stage for r in p.runs] == ["script", "visuals"]
+    assert p.waiting.startswith("Tara's take of")
+    assert "pictures" not in p.waiting
 
 
 def _ffmpeg(*args: str) -> None:
@@ -122,17 +125,20 @@ def test_runs_to_a_finished_render_and_redoes_it_for_a_new_take(
     _ffmpeg("-f", "lavfi", "-i", "color=c=teal:s=1024x1536", "-frames:v", "1", str(png))
     _ffmpeg("-f", "lavfi", "-i", "sine=frequency=200:duration=6", str(take))
     out = tmp_path / "out"
-    calls = Calls(png.read_bytes())
+    calls = Calls()
     v = new_video(conn)
 
     p = pipeline.advance(conn, v.id, take, calls.context(out))
+    assert p.waiting.startswith("pictures 1, 2, 3, 4")
+    add_pictures(conn, out, v.id, png.read_bytes())
+    p = pipeline.advance(conn, v.id, None, calls.context(out))
     assert p.waiting == ""
     assert p.render == out / v.id / "render.mp4"
     assert [r.stage for r in p.runs] == ["script", "voice", "captions", "visuals", "render"]
 
-    cached = pipeline.Context(out, Clock(), unreachable, unreachable, unreachable)
+    cached = pipeline.Context(out, Clock(), unreachable, unreachable)
     assert pipeline.advance(conn, v.id, None, cached).render == p.render
 
     again = pipeline.advance(conn, v.id, take, calls.context(out))
     assert again.render == p.render
-    assert calls.count == {"claude": 1, "transcribe": 2, "draw": 4}
+    assert calls.count == {"claude": 1, "transcribe": 2}

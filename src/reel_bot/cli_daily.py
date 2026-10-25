@@ -18,7 +18,6 @@ from reel_bot import (
     script_write,
     store,
     videos,
-    visuals_write,
     web,
 )
 
@@ -42,7 +41,6 @@ def _context(
     conn: sqlite3.Connection, env: Mapping[str, str], clock: Callable[[], datetime], cap: float
 ) -> Callable[[str], pipeline.Context]:
     out = Path(env.get("REEL_BOT_OUT_DIR") or config.DEFAULT_OUT_DIR)
-    key = env.get("OPENAI_API_KEY", "").strip()
 
     def make(vid: str) -> pipeline.Context:
         b = budget.Budget(conn, vid, cap, clock)
@@ -51,7 +49,6 @@ def _context(
             clock=clock,
             claude=lambda: b.claude(script_write.claude()),
             transcribe=captions_write.local,
-            draw=lambda: b.draw(visuals_write.openai(key)),
         )
 
     return make

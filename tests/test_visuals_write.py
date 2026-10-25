@@ -1,12 +1,7 @@
-import base64
 import json
 import sqlite3
-import threading
-from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -14,11 +9,12 @@ from reel_bot import script, store, store_videos, videos, visuals, visuals_write
 from reel_bot.script import Paragraph, Script
 from reel_bot.stories import Story
 from reel_bot.videos import StageRun, Video
-from reel_bot.visuals_write import Drawn
+from reel_bot.visuals_write import Made
 
 NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 FOX = Story("aesop-fox", "fox-and-grapes", "The Fox and the Grapes", "Aesop", "Townsend", "p. 1")
 PNG = visuals.PNG_MAGIC + b"picture"
+JPEG = b"\xff\xd8\xff\xe0photo"
 
 
 class Clock:
@@ -53,119 +49,60 @@ def scripted(conn: sqlite3.Connection, out: Path, with_script: bool = True) -> V
     return v
 
 
-class Fake:
-    def __init__(self, fail_at: int = 0, png: bytes = PNG) -> None:
-        self.prompts: list[str] = []
-        self.fail_at = fail_at
-        self.png = png
-
-    def __call__(self, prompt: str) -> Drawn:
-        self.prompts.append(prompt)
-        if len(self.prompts) == self.fail_at:
-            raise visuals.VisualsError("picture failed: HTTP 500")
-        return Drawn(self.png, 0.05)
+def made(data: bytes = PNG) -> Made:
+    return Made(data, "tara", NOW)
 
 
-def test_draws_records_assets_and_reuses(conn: sqlite3.Connection, tmp_path: Path) -> None:
+def test_adds_pictures_as_they_come_then_finishes(conn: sqlite3.Connection, tmp_path: Path) -> None:
     out = tmp_path / "out"
     v = scripted(conn, out)
-    fake = Fake()
-    plan = visuals_write.make(conn, out, v.id, fake, Clock())
-    assert len(fake.prompts) == 3
-    assert "A fox, scene 2." in fake.prompts[1]
-    assert (out / v.id / "picture-3.png").read_bytes() == PNG
-    manifest = json.loads((out / v.id / "visuals.json").read_text(encoding="utf-8"))
-    assert [p["section"] for p in manifest["pictures"]] == ["p1", "p2", "p3"]
-    assert store_videos.stage_runs(conn, v.id)["visuals"].cost_usd == pytest.approx(0.15)
-    assets = store_videos.assets(conn, v.id)
-    assert [(a.path, a.kind, a.source) for a in assets] == [
-        (f"picture-{i}.png", "image", "openai:gpt-image-1") for i in range(1, 4)
-    ]
-    assert "commercial use" in assets[0].licence
-    assert visuals_write.make(conn, out, v.id, Fake(fail_at=1), Clock()) == plan
-
-
-def test_a_rerun_draws_only_the_missing_pictures(conn: sqlite3.Connection, tmp_path: Path) -> None:
-    out = tmp_path / "out"
-    v = scripted(conn, out)
-    with pytest.raises(visuals.VisualsError, match="HTTP 500"):
-        visuals_write.make(conn, out, v.id, Fake(fail_at=2), Clock())
+    assert visuals_write.finish(conn, out, v.id, Clock()) == [1, 2, 3]
+    visuals_write.add(conn, out, v.id, 2, made(JPEG))
+    visuals_write.add(conn, out, v.id, 1, made())
+    assert visuals_write.finish(conn, out, v.id, Clock()) == [3]
     assert "visuals" not in store_videos.stage_runs(conn, v.id)
-    again = Fake()
-    visuals_write.make(conn, out, v.id, again, Clock())
-    assert len(again.prompts) == 2
-    assert store_videos.stage_runs(conn, v.id)["visuals"].cost_usd == pytest.approx(0.1)
+    visuals_write.add(conn, out, v.id, 3, made())
+    assert visuals_write.finish(conn, out, v.id, Clock()) == []
+    assert (out / v.id / "picture-2.jpg").read_bytes() == JPEG
+    manifest = json.loads((out / v.id / "visuals.json").read_text(encoding="utf-8"))
+    assert [(p["section"], p["path"]) for p in manifest["pictures"]] == [
+        ("p1", "picture-1.png"), ("p2", "picture-2.jpg"), ("p3", "picture-3.png"),
+    ]  # fmt: skip
+    assert "A fox, scene 2." in manifest["pictures"][1]["prompt"]
+    assert store_videos.stage_runs(conn, v.id)["visuals"].cost_usd == 0
+    assets = store_videos.assets(conn, v.id)
+    assert [(a.path, a.kind, a.source) for a in assets][1] == (
+        "picture-2.jpg", "image", "made in ChatGPT by tara",
+    )  # fmt: skip
+    assert "commercial use" in assets[0].licence
 
 
-def test_refuses_a_non_png_and_a_video_without_a_script(
+def test_a_new_picture_replaces_the_old_and_redoes_the_render(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    v = scripted(conn, out)
+    for n in (1, 2, 3):
+        visuals_write.add(conn, out, v.id, n, made())
+    visuals_write.finish(conn, out, v.id, Clock())
+    store_videos.record_stage(conn, v.id, StageRun("render", "render.mp4", 0, 1, NOW))
+    visuals_write.add(conn, out, v.id, 1, made(JPEG))
+    assert not (out / v.id / "picture-1.png").exists()
+    assert {"visuals", "render"}.isdisjoint(store_videos.stage_runs(conn, v.id))
+    assert visuals_write.finish(conn, out, v.id, Clock()) == []
+
+
+def test_refuses_odd_pictures_numbers_and_a_video_without_a_script(
     conn: sqlite3.Connection, tmp_path: Path
 ) -> None:
     out = tmp_path / "out"
     v = scripted(conn, out)
     with pytest.raises(visuals.VisualsError, match="not a PNG"):
-        visuals_write.make(conn, out, v.id, Fake(png=b"<html>"), Clock())
-    assert not (out / v.id / "picture-1.png").exists()
+        visuals_write.add(conn, out, v.id, 1, made(b"<html>"))
+    assert list((out / v.id).glob("picture-*")) == []
+    for n in (0, 4):
+        with pytest.raises(visuals.VisualsError, match="pictures 1 to 3"):
+            visuals_write.add(conn, out, v.id, n, made())
     bare = scripted(conn, out, with_script=False)
     with pytest.raises(visuals.VisualsError, match="no script"):
-        visuals_write.make(conn, out, bare.id, Fake(), Clock())
-
-
-def test_parse_rejects_a_reply_without_a_picture() -> None:
-    with pytest.raises(visuals.VisualsError):
-        visuals_write.parse(b'{"data": []}')
-
-
-def test_openai_needs_https_and_a_key() -> None:
-    with pytest.raises(visuals.VisualsError, match="https"):
-        visuals_write.openai("k", "http://example.com/v1")
-    with pytest.raises(visuals.VisualsError, match="OPENAI_API_KEY"):
-        visuals_write.openai("")
-
-
-class _FakeAPI(BaseHTTPRequestHandler):
-    """Answers POST /v1/images/generations like OpenAI; fails the first `fail` calls."""
-
-    fail: list[int] = []  # noqa: RUF012
-    seen: list[dict[str, Any]] = []  # noqa: RUF012
-
-    def do_POST(self) -> None:
-        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
-        type(self).seen.append({"path": self.path, "auth": self.headers["authorization"], **body})
-        if type(self).fail:
-            self.send_response(type(self).fail.pop(0))
-            self.send_header("content-length", "0")
-            self.end_headers()
-            return
-        out = json.dumps({"data": [{"b64_json": base64.b64encode(PNG).decode()}]}).encode()
-        self.send_response(200)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(out)))
-        self.end_headers()
-        self.wfile.write(out)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        pass
-
-
-@pytest.fixture
-def api() -> Iterator[str]:
-    _FakeAPI.fail, _FakeAPI.seen = [], []
-    server = HTTPServer(("127.0.0.1", 0), _FakeAPI)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_port}/v1"
-    server.shutdown()
-
-
-def test_openai_asks_for_one_portrait_picture(api: str) -> None:
-    slept: list[float] = []
-    _FakeAPI.fail = [503]
-    drawn = visuals_write.openai("sk-test", api, slept.append)("A fox under a vine.")
-    assert drawn == Drawn(PNG, visuals_write.PRICE_PER_IMAGE)
-    assert slept == [2.0]
-    seen = _FakeAPI.seen[-1]
-    assert seen["path"] == "/v1/images/generations"
-    assert seen["auth"] == "Bearer sk-test"
-    assert (seen["model"], seen["size"], seen["n"]) == ("gpt-image-1", "1024x1536", 1)
-    _FakeAPI.fail = [400]
-    with pytest.raises(visuals.VisualsError, match="HTTP 400"):
-        visuals_write.openai("k", api, slept.append)("x")
+        visuals_write.finish(conn, out, bare.id, Clock())

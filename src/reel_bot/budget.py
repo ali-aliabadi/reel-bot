@@ -12,11 +12,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from reel_bot import script_write, store_videos, visuals_write
+from reel_bot import script_write, store_videos
 
 # Worst-case cost of one call, checked before it is made.
 SCRIPT_USD = 0.35  # 16k output tokens at the fallback model's price
-PICTURE_USD = visuals_write.PRICE_PER_IMAGE
 
 
 class BudgetError(Exception):
@@ -52,14 +51,5 @@ class Budget:
             reply = generate(system, user, schema)
             self.record("script", reply.cost_usd())
             return reply
-
-        return call
-
-    def draw(self, draw: visuals_write.Draw) -> visuals_write.Draw:
-        def call(prompt: str) -> visuals_write.Drawn:
-            self.allow("a picture", PICTURE_USD)
-            drawn = draw(prompt)
-            self.record("picture", drawn.cost_usd)
-            return drawn
 
         return call

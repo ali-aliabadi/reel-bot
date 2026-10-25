@@ -22,9 +22,9 @@ SCRIPT = Script(
 
 def test_plan_draws_one_picture_per_paragraph() -> None:
     plan = visuals.plan(SCRIPT)
-    assert [(p.section, p.path) for p in plan.pictures] == [
-        ("p1", "picture-1.png"),
-        ("p2", "picture-2.png"),
+    assert [(p.section, p.name) for p in plan.pictures] == [
+        ("p1", "picture-1"),
+        ("p2", "picture-2"),
     ]
     first = plan.pictures[0].prompt
     assert "A fox leaping at a vine." in first
@@ -38,7 +38,10 @@ def test_plan_needs_paragraphs() -> None:
         visuals.plan(dataclasses.replace(SCRIPT, paragraphs=()))
 
 
-def test_check_png() -> None:
-    visuals.check_png(visuals.PNG_MAGIC + b"rest")
-    with pytest.raises(visuals.VisualsError, match="not a PNG"):
-        visuals.check_png(b"<html>")
+def test_suffix_comes_from_the_bytes() -> None:
+    assert visuals.suffix(visuals.PNG_MAGIC + b"rest") == ".png"
+    assert visuals.suffix(b"\xff\xd8\xff\xe0rest") == ".jpg"
+    assert visuals.suffix(b"RIFF\x00\x00\x00\x00WEBPVP8 ") == ".webp"
+    for odd in (b"<html>", b"GIF89a", b"", b"RIFF\x00\x00\x00\x00WAVE"):
+        with pytest.raises(visuals.VisualsError, match="not a PNG, JPEG or WebP"):
+            visuals.suffix(odd)

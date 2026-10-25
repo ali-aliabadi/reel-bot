@@ -98,7 +98,7 @@ type Block struct {
 	Filename    string     `json:"filename,omitempty"`
 	Options     []string   `json:"options,omitempty"`
 	Webhook     string     `json:"webhook,omitempty"`
-	Reply       string     `json:"reply,omitempty"` // question: "voice" asks for a voice note
+	Reply       string     `json:"reply,omitempty"` // question: "voice" or "image" asks for a voice note or a picture
 }
 
 // ErrNoRecipient means a message had no To and RELAY_USER is unset.
@@ -143,13 +143,14 @@ type Recipient struct {
 // Answer is one recipient's answer to a question.
 type Answer struct {
 	Recipient  string    `json:"recipient"`
-	Answer     string    `json:"answer"` // empty for a voice note
-	Audio      *Audio    `json:"audio,omitempty"`
+	Answer     string    `json:"answer"` // empty for a voice note or picture
+	Audio      *File     `json:"audio,omitempty"`
+	Image      *File     `json:"image,omitempty"`
 	AnsweredAt time.Time `json:"answered_at"`
 }
 
-// Audio is a voice-note answer; Base64 decodes to the recording.
-type Audio struct {
+// File is a voice-note or picture answer; Base64 decodes to its bytes.
+type File struct {
 	ContentType string `json:"content_type"`
 	Base64      string `json:"base64"`
 }

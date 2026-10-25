@@ -2,11 +2,16 @@
 finished video goes back to her there to upload by hand.
 
 `start` (once a morning, from a timer) makes a video and asks ali to pick one of
-three stories. `tick` (every few minutes) moves every open video one step on:
-the pick is recorded with who made it, the script and pictures are made, Tara
-gets the script and a voice-note question, her take is rendered and the MP4 is
-sent to her and to ali. Each step's Relay message ID is stored, so a tick is
-safe to rerun: it never asks twice or sends twice. A failure stops the video and
+three stories. `tick` (every few minutes) moves every open video on: the pick is
+recorded with who made it; Tara gets the script prompt to paste into ChatGPT and
+replies with its answer, which is checked (a script with problems goes back to
+the same chat as a fix, at most three tries in all). Tara is guided one step at
+a time, each message sent only once the one before is answered: the script to
+read as a voice note, then each picture prompt, answered with the picture she
+made in ChatGPT; each answer is saved as it arrives, and once
+the take and every picture are in, the video is rendered and the MP4 is sent to
+her and to ali. Each step's Relay message ID is stored, so a tick is safe to
+rerun: it never asks twice or sends twice. A failure stops the video and
 alerts ali; `retry` reopens it. Relay being unreachable while polling for an
 answer is not a failure: the next tick tries again.
 """
@@ -17,9 +22,22 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
-from reel_bot import pipeline, store, store_daily, store_videos, stories, videos, web
+from reel_bot import (
+    pipeline,
+    script,
+    script_write,
+    store,
+    store_daily,
+    store_videos,
+    stories,
+    videos,
+    visuals,
+    visuals_write,
+    web,
+)
 from reel_bot.relay_api import (
     Answer,
     RelayError,
@@ -27,12 +45,15 @@ from reel_bot.relay_api import (
     file_message,
     options,
     pick_message,
+    picture_message,
+    script_message,
     take_message,
 )
 
 log = logging.getLogger(__name__)
 
 CHOICES = 3
+SCRIPT_TRIES = 3  # ChatGPT's first script and up to two fixes (store.py allows script-1..3)
 
 
 class DailyError(Exception):
@@ -93,6 +114,7 @@ def tick(run: Run) -> list[str]:
             RelayError,
             store.StoreError,
             videos.VideoError,
+            visuals.VisualsError,
             web.WebError,
         ) as err:
             _fail(run, vid, err)
@@ -141,36 +163,94 @@ def _advance(run: Run, vid: str) -> str:
         store_videos.choose_story(conn, vid, story_id, got.recipient, run.clock())
         video = store_videos.get_video(conn, vid)
     title = _story(conn, str(video.story_id)).title
-    folder = videos.video_dir(ctx.out_dir, vid)
+    if "script" not in store_videos.stage_runs(conn, vid):
+        waiting = _script(run, video, title, sent)
+        if waiting:
+            return waiting
     if "take" not in sent:
-        pipeline.advance(conn, vid, None, ctx)  # the script and the pictures
-        spoken = (folder / pipeline.READ_FILE).read_text(encoding="utf-8").strip()
-        mid = run.relay.send(take_message(run.people.narrator, vid, title, spoken))
+        pipeline.advance(conn, vid, None, ctx)  # read-this.txt from the script
+        spoken = (videos.video_dir(ctx.out_dir, vid) / pipeline.READ_FILE).read_text("utf-8")
+        mid = run.relay.send(take_message(run.people.narrator, vid, title, spoken.strip()))
         store_daily.add_step(conn, vid, "take", mid, run.clock())
         return "asked for the take"
-    got = _poll(run, sent["take"])
-    if got is None:
-        return "waiting for the take"
-    if got.audio is None:
-        raise DailyError("the take's answer has no audio")
-    take = folder / f"take{got.audio_suffix()}"
-    take.write_bytes(got.audio)
-    done = pipeline.advance(conn, vid, take, ctx)
+    done = pipeline.advance(conn, vid, _collect(run, vid, sent), ctx)
     if done.render is None:
-        raise DailyError(f"the render did not finish: waiting for {done.waiting}")
+        asked = _next_picture(run, vid, title, sent)
+        return f"asked for picture {asked}" if asked else f"waiting for {done.waiting}"
     to = [run.people.narrator, run.people.picker]
     mid = run.relay.send(file_message(to, vid, title, done.render))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
     return f"sent {done.render} (${done.cost_usd():.2f})"
 
 
+def _script(run: Run, video: videos.Video, title: str, sent: dict[str, str]) -> str:
+    """Ask Tara for ChatGPT's script, check her answer, and ask for a fix while it
+    has problems. Returns what it waits for, "" once the script is recorded."""
+    conn, vid = run.conn, video.id
+    tries = sum(step.startswith("script-") for step in sent)
+    if tries == 0:
+        paste = script.chat_prompt(_story(conn, str(video.story_id)), video)
+    else:
+        got = _poll(run, sent[f"script-{tries}"])
+        if got is None:
+            return "waiting for the script"
+        found = script_write.add(conn, run.context(vid).out_dir, vid, got.text, run.clock)
+        if not found:
+            return ""
+        if tries == SCRIPT_TRIES:
+            raise DailyError(f"ChatGPT's script still has problems: {'; '.join(found)}")
+        paste = script.chat_fix(found)
+    msg = script_message(run.people.narrator, vid, title, paste, tries + 1)
+    store_daily.add_step(conn, vid, f"script-{tries + 1}", run.relay.send(msg), run.clock())
+    return "asked for the script" if tries == 0 else f"asked for fix {tries} of the script"
+
+
+def _next_picture(run: Run, vid: str, title: str, sent: dict[str, str]) -> int:
+    """Ask Tara for the next picture once her take and every earlier picture are
+    in, so she gets one step at a time. Returns its number, 0 when none was asked."""
+    conn, out = run.conn, run.context(vid).out_dir
+    if "voice" not in store_videos.stage_runs(conn, vid):
+        return 0
+    folder, pictures = videos.video_dir(out, vid), visuals_write.plan(conn, out, vid).pictures
+    for n, pic in enumerate(pictures, 1):
+        if f"picture-{n}" not in sent:
+            msg = picture_message(run.people.narrator, vid, title, [p.prompt for p in pictures], n)
+            store_daily.add_step(conn, vid, f"picture-{n}", run.relay.send(msg), run.clock())
+            return n
+        if visuals_write.found(folder, pic) is None:
+            return 0
+    return 0
+
+
+def _collect(run: Run, vid: str, sent: dict[str, str]) -> Path | None:
+    """Save every picture Tara has sent; returns her take when it has just arrived."""
+    conn, out = run.conn, run.context(vid).out_dir
+    folder = videos.video_dir(out, vid)
+    for n, pic in enumerate(visuals_write.plan(conn, out, vid).pictures, 1):
+        step = sent.get(f"picture-{n}")
+        if step and visuals_write.found(folder, pic) is None and (got := _poll(run, step)):
+            if got.image is None:
+                raise DailyError(f"the answer to picture {n} has no picture")
+            made = visuals_write.Made(got.image, got.recipient, run.clock())
+            visuals_write.add(conn, out, vid, n, made)
+    if "voice" in store_videos.stage_runs(conn, vid) or not (got := _poll(run, sent["take"])):
+        return None
+    if got.audio is None:
+        raise DailyError("the take's answer has no audio")
+    take = folder / f"take{got.audio_suffix()}"
+    take.write_bytes(got.audio)
+    return take
+
+
 def _where(conn: sqlite3.Connection, vid: str) -> str:
     sent, runs = store_daily.steps(conn, vid), store_videos.stage_runs(conn, vid)
     if store_videos.get_video(conn, vid).story_id is None:
         return "story pick"
-    if "take" not in sent:
-        return "script and pictures"
-    return "render and send" if "voice" in runs else "the take"
+    if "script" not in runs or "take" not in sent:
+        return "script"
+    if "voice" in runs and "visuals" in runs:
+        return "render and send"
+    return "the take and pictures"
 
 
 def _fail(run: Run, vid: str, err: Exception) -> None:

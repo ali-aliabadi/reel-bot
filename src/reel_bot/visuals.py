@@ -4,7 +4,7 @@ Each paragraph of the script carries a one-sentence description of its scene;
 this module adds the channel's fixed style and the frame's needs (vertical,
 calm lower third for captions) and names the files. The hook is shown over the
 first picture and the lesson over the last, so only paragraphs get pictures.
-The API call lives in `visuals_write`.
+Tara makes the pictures from these prompts; `visuals_write` saves them.
 """
 
 from dataclasses import dataclass
@@ -17,6 +17,7 @@ FRAME = (
     "readable."
 )
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+SUFFIXES = (".png", ".jpg", ".webp")  # the picture types a video takes
 
 
 class VisualsError(Exception):
@@ -26,7 +27,7 @@ class VisualsError(Exception):
 @dataclass(frozen=True)
 class Picture:
     section: str  # "p1".."pN", matching the captions' sections
-    path: str  # relative to the video's directory
+    name: str  # file name in the video's directory, without the suffix of the picture's type
     prompt: str
 
 
@@ -50,12 +51,19 @@ def plan(script: Script) -> Visuals:
     return Visuals(
         script.video_id,
         tuple(
-            Picture(f"p{i}", f"picture-{i}.png", prompt(script, p.picture))
+            Picture(f"p{i}", f"picture-{i}", prompt(script, p.picture))
             for i, p in enumerate(script.paragraphs, 1)
         ),
     )
 
 
-def check_png(data: bytes) -> None:
-    if not data.startswith(PNG_MAGIC):
-        raise VisualsError("the picture is not a PNG")
+def suffix(data: bytes) -> str:
+    """The picture's file suffix, from its first bytes; anything but PNG, JPEG or WebP
+    raises VisualsError."""
+    if data.startswith(PNG_MAGIC):
+        return ".png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    raise VisualsError("the picture is not a PNG, JPEG or WebP")

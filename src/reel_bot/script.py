@@ -4,7 +4,8 @@ A script is the retelling Tara reads aloud, split into paragraphs, each with one
 picture prompt for the visuals stage. The video's length and framing settings
 decide the word budget and whether a closing work lesson is written; this
 module reads those settings from tables and never branches on their names
-elsewhere. The model call itself lives in `script_write`.
+elsewhere. The model call itself lives in `script_write`; `chat_prompt` is the
+same brief as one message to paste into a chat app (ChatGPT) by hand.
 """
 
 import json
@@ -111,10 +112,31 @@ def prompt(story: Story, video: Video) -> str:
     )
 
 
+CHAT_FORMAT = '{"hook": "...", "paragraphs": [{"text": "...", "picture": "..."}], "lesson": ""}'
+
+
+def chat_prompt(story: Story, video: Video) -> str:
+    """The whole brief as one message for a chat app, ending with the reply format."""
+    return (
+        f"{SYSTEM}\n\n{prompt(story, video)}\n\n"
+        f"Answer with only this JSON, nothing before or after it:\n{CHAT_FORMAT}"
+    )
+
+
+def chat_fix(found: list[str]) -> str:
+    """What to tell the chat app when its script has problems."""
+    return (
+        "That script has these problems:\n- "
+        + "\n- ".join(found)
+        + "\nWrite it again without them. Answer with only the JSON."
+    )
+
+
 def parse(raw: str, story: Story, video: Video) -> Script:
-    """The model's JSON reply as a Script. Raises ScriptError on a bad shape."""
+    """The model's JSON reply as a Script, ignoring any text or code fence around
+    the object (a pasted chat answer). Raises ScriptError on a bad shape."""
     try:
-        data = cast(dict[str, Any], json.loads(raw))
+        data = cast(dict[str, Any], json.loads(raw[raw.find("{") : raw.rfind("}") + 1]))
         paragraphs = tuple(
             Paragraph(str(p["text"]).strip(), str(p["picture"]).strip())
             for p in cast(list[dict[str, Any]], data["paragraphs"])
