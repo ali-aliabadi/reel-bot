@@ -1,8 +1,9 @@
 """Script stage, I/O edge: ask Claude for the script, check it, cache it.
 
 `write` is idempotent: when the video already has a recorded script on disk it
-is returned without another model call. A video can only get a script after
-its story was picked by a person (the human pick rule).
+is returned without another model call. `add` records a script written
+elsewhere (ChatGPT, pasted back by Tara) once it passes the same checks. A video
+can only get a script after its story was picked by a person (the human pick rule).
 """
 
 import logging
@@ -82,6 +83,42 @@ def _story(conn: sqlite3.Connection, story_id: str) -> Story:
     raise script.ScriptError(f"story {story_id!r} is not in the catalog")
 
 
+def _picked(conn: sqlite3.Connection, video_id: str) -> tuple[videos.Video, Story]:
+    video = store_videos.get_video(conn, video_id)
+    if video.story_id is None:
+        raise script.ScriptError(f"video {video_id} has no picked story yet")
+    return video, _story(conn, video.story_id)
+
+
+def _save(conn: sqlite3.Connection, path: Path, draft: script.Script, run: videos.StageRun) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(script.to_json(draft), encoding="utf-8")
+    tmp.replace(path)
+    store_videos.record_stage(conn, draft.video_id, run)
+
+
+def add(
+    conn: sqlite3.Connection,
+    out_dir: Path,
+    video_id: str,
+    reply: str,
+    clock: Callable[[], datetime],
+) -> list[str]:
+    """Check a script written elsewhere and record it (at no cost) when it is usable.
+    Returns its problems; empty once it is recorded."""
+    video, story = _picked(conn, video_id)
+    try:
+        draft = script.parse(reply, story, video)
+    except script.ScriptError:
+        return ["it is not the JSON asked for"]
+    found = script.problems(draft, video)
+    if not found:
+        path = videos.video_dir(out_dir, video_id) / FILENAME
+        _save(conn, path, draft, videos.StageRun("script", FILENAME, 0.0, 0.0, clock()))
+    log.info("script pasted", extra={"video_id": video_id, "problems": len(found)})
+    return found
+
+
 def write(
     conn: sqlite3.Connection,
     out_dir: Path,
@@ -90,15 +127,12 @@ def write(
     clock: Callable[[], datetime],
 ) -> script.Script:
     """The video's script: from the cache, or written by the model and checked."""
-    video = store_videos.get_video(conn, video_id)
-    if video.story_id is None:
-        raise script.ScriptError(f"video {video_id} has no picked story yet")
+    video, story = _picked(conn, video_id)
     path = videos.video_dir(out_dir, video_id) / FILENAME
     if "script" in store_videos.stage_runs(conn, video_id) and path.is_file():
         log.info("script reused", extra={"video_id": video_id})
         return script.from_json(path.read_text(encoding="utf-8"))
 
-    story = _story(conn, video.story_id)
     started, cost = clock(), 0.0
     user = script.prompt(story, video)
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -126,12 +160,7 @@ def write(
     else:
         raise script.ScriptError(f"no usable script for {video_id} after {MAX_ATTEMPTS} tries")
 
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(script.to_json(draft), encoding="utf-8")
-    tmp.replace(path)
     finished = clock()
     seconds = (finished - started).total_seconds()
-    store_videos.record_stage(
-        conn, video_id, videos.StageRun("script", FILENAME, round(cost, 4), seconds, finished)
-    )
+    _save(conn, path, draft, videos.StageRun("script", FILENAME, round(cost, 4), seconds, finished))
     return draft

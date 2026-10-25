@@ -74,6 +74,23 @@ def test_picture_message_asks_for_one_picture_and_refuses_an_overlong_prompt() -
         relay_api.picture_message("tara", "vid_1", FOX.title, ["x" * 4001], 1)
 
 
+def test_script_message_asks_for_chatgpts_answer_then_fixes() -> None:
+    m = relay_api.script_message("tara", "vid_1", FOX.title, "the brief", 1)
+    assert m["title"] == f"Script: {FOX.title}"
+    assert m["idempotency_key"] == "vid_1-script-1"
+    intro, code, question = cast(list[Any], m["blocks"])
+    assert "new ChatGPT chat" in intro["text"]
+    assert code == {"type": "code", "text": "the brief"}
+    assert question["type"] == "question"
+    assert "options" not in question
+    assert "reply" not in question  # a typed answer
+    fix = relay_api.script_message("tara", "vid_1", FOX.title, "fix it", 2)
+    assert fix["title"] == f"Script, try 2: {FOX.title}"
+    assert "same chat" in cast(list[Any], fix["blocks"])[0]["text"]
+    with pytest.raises(RelayError, match="script prompt"):
+        relay_api.script_message("tara", "vid_1", FOX.title, "x" * 4001, 1)
+
+
 def test_file_message_attaches_the_video_once_per_person(tmp_path: Path) -> None:
     mp4 = tmp_path / "render.mp4"
     mp4.write_bytes(b"\x00\x00\x00\x18ftypmp42")

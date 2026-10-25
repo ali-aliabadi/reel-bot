@@ -16,7 +16,7 @@ should be one small PR unless noted. Design details are in
 - [ ] Create a Google Cloud project, enable YouTube Data API v3 and YouTube Analytics API, add a "Desktop app" OAuth client, set the consent screen to In production, then `reel-bot auth youtube`; file the upload audit
 - [ ] Instagram: switch the account to Creator or Business, create a Meta app (Instagram API with Instagram Login), add the account as Instagram Tester, generate a token, `reel-bot auth instagram`
 - [ ] TikTok: create an app with Login Kit and the Content Posting API (Direct Post), register the redirect URI, `reel-bot auth tiktok`; apply for the audit
-- [ ] Anthropic API key in the VPS's `.env` for scripts
+- [x] Choose the script writer for the daily run: Tara pastes reel-bot's brief into ChatGPT and replies with its script (free; the Claude API stays for `reel-bot script`)
 - [x] Choose the picture source: Tara makes them in ChatGPT from reel-bot's prompts (free; the OpenAI image API was dropped to keep costs at zero)
 
 ## Phase 1: skeleton and tooling

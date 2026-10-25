@@ -65,6 +65,8 @@ def replies(rng: random.Random, good: dict[str, Any]) -> list[bytes]:
         raw[: rng.randint(0, len(raw))],
         rng.randbytes(rng.randint(0, 64)),
         b"[" * 100_000,
+        b'{"a":' * 100_000,
+        b"} junk {",
     ]
 
 
