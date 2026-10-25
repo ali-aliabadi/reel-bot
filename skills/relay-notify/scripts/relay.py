@@ -41,7 +41,7 @@ import uuid
 
 NO_ANSWER = 3
 CHECK_FAILED = 4
-MAX_FILE_BYTES = 5 << 20  # Relay's limit for one file block
+MAX_FILE_BYTES = 45 << 20  # Relay's limit for one file block; over 5 MB needs a raised RELAY_MAX_BODY_BYTES
 
 
 class RelayError(Exception):
@@ -102,7 +102,7 @@ def _request(method, path, body=None, retries=3):
         })
         try:
             big = len(data or b"") >= (1 << 20) or path.endswith("/answers")
-            timeout = 120 if big else 15  # room to upload a file or fetch a voice answer
+            timeout = 300 if big else 15  # room to upload a file or fetch a voice answer
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as e:
@@ -155,7 +155,8 @@ def notify(text=None, title=None, urgency="normal", to=None, fields=None, blocks
 
 
 def file_block(path, caption=None, filename=None, content_type=None):
-    """Builds a file block from a local file (one per message, up to 5 MB).
+    """Builds a file block from a local file (one per message, up to 5 MB, or 45 MB
+    when the admin has raised RELAY_MAX_BODY_BYTES).
     The recipient sees filename (default: the file's own name), so make sure
     it gives nothing away the reader shouldn't see."""
     size = os.path.getsize(path)
@@ -281,7 +282,7 @@ def _cli(argv):
     n = sub.add_parser("notify", help="send a notification")
     n.add_argument("text", nargs="?")
     n.add_argument("--field", action="append", metavar="LABEL=VALUE", help="a fields line (repeatable)")
-    n.add_argument("--file", metavar="PATH", help="attach a file (up to 5 MB), sent as a Telegram document")
+    n.add_argument("--file", metavar="PATH", help="attach a file (up to 5 MB, 45 MB with a raised body limit), sent as a Telegram document")
     n.add_argument("--file-caption", help="caption shown under the file")
     common(n)
 

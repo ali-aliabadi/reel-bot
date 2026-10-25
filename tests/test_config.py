@@ -60,3 +60,22 @@ def test_error_message_never_contains_values() -> None:
         config.load({"RELAY_URL": "http://secret-host.test", "RELAY_API_KEY": KEY})
     assert "secret-host" not in str(exc.value)
     assert KEY not in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("url", "ok"),
+    [
+        ("http://127.0.0.1:18080", True),
+        ("https://relay.example.test", True),
+        ("http://relay.example.test", False),
+        ("http://localhost:18080", False),
+        ("ftp://127.0.0.1", False),
+    ],
+)
+def test_relay_url_is_https_or_loopback(url: str, ok: bool) -> None:
+    env = {"RELAY_URL": url, "RELAY_API_KEY": "rk_test_not_a_real_key"}
+    if ok:
+        assert config.load(env).relay_url == url
+    else:
+        with pytest.raises(config.ConfigError, match="RELAY_URL must be"):
+            config.load(env)

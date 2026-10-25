@@ -1,0 +1,18 @@
+# Moves every open daily video on (reel-bot daily tick): records ali's pick, makes the
+# script and pictures, asks Tara for her take, renders it and sends her the video.
+# Capped so a bad render can't starve Relay and the other services on the VPS.
+[Unit]
+Description=reel-bot: move the daily videos on
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/reel-bot
+EnvironmentFile=/opt/reel-bot/.env
+ExecStart=/opt/reel-bot/.venv/bin/reel-bot daily tick
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=700M
+MemorySwapMax=0
