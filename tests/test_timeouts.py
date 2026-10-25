@@ -15,7 +15,6 @@ import pytest
 from reel_bot import (
     captions,
     captions_write,
-    openai_api,
     relay_api,
     render,
     render_write,
@@ -57,16 +56,6 @@ def slow_api() -> Iterator[str]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"http://127.0.0.1:{server.server_port}/v1"
     server.shutdown()
-
-
-def test_openai_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str) -> None:
-    slept: list[float] = []
-    client = openai_api.Client("k", slow_api, timeout_s=0.2, sleep=slept.append)
-    started = time.monotonic()
-    with pytest.raises(openai_api.OpenAIError, match="failed"):
-        client.post("/x", b"{}", "application/json", "test call")
-    assert slept == [2.0, 4.0]  # three attempts in all
-    assert time.monotonic() - started < 3
 
 
 @needs_ffmpeg

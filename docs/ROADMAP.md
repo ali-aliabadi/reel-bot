@@ -17,8 +17,7 @@ should be one small PR unless noted. Design details are in
 - [ ] Instagram: switch the account to Creator or Business, create a Meta app (Instagram API with Instagram Login), add the account as Instagram Tester, generate a token, `reel-bot auth instagram`
 - [ ] TikTok: create an app with Login Kit and the Content Posting API (Direct Post), register the redirect URI, `reel-bot auth tiktok`; apply for the audit
 - [ ] Anthropic API key in the VPS's `.env` for scripts
-- [x] Choose the picture source: OpenAI image API
-- [ ] OpenAI API key, with a monthly limit, in the VPS's `.env` (pictures)
+- [x] Choose the picture source: Tara makes them in ChatGPT from reel-bot's prompts (free; the OpenAI image API was dropped to keep costs at zero)
 
 ## Phase 1: skeleton and tooling
 
@@ -42,7 +41,7 @@ should be one small PR unless noted. Design details are in
 - [x] `script` stage: Claude call from a chosen story; snapshot tests with a fake client
 - [x] `voice` stage: import a recording, clean it and normalize loudness (ffmpeg)
 - [x] `captions` stage: word timings from Whisper on the machine (`faster-whisper`, free) aligned to the script, caption cues and part timings (burned in by `render`)
-- [x] `visuals` stage: OpenAI image API behind a small interface, with a fake for tests; each picture recorded in `assets`
+- [x] `visuals` stage: one prompt per paragraph; Tara answers each with her picture through Relay (`reply: "image"`), or ali adds it by hand; each picture recorded in `assets`
 - [x] `render` stage: ffmpeg 1080x1920 30 fps, slow zoom, cuts at the part timings, captions burned in, at low priority on 2 threads; render smoke test with ffprobe (skips without ffmpeg)
 - [x] `reel-bot make <video id> [--voice <file>]` runs every stage the video is ready for, stops for the pick and for Tara's take, and prints cost and time per stage
 - [x] Quality to Relay's level: odd-input tests for every parser, timeout tests for every process and call, a 95% coverage floor, and a monthly spend cap (`REEL_BOT_MONTHLY_CAP_USD`) on every paid call

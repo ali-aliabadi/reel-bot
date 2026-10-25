@@ -23,14 +23,12 @@ from reel_bot import (
     render,
     script,
     tiktok,
-    visuals_write,
     youtube,
 )
 from reel_bot.captions import Word
 from reel_bot.publish import Post, PublishError
 from reel_bot.stories import Story
 from reel_bot.videos import Video
-from reel_bot.visuals import VisualsError
 from reel_bot.web import Reply, Request
 
 CASES = 400
@@ -87,7 +85,6 @@ def parse_script(raw: bytes) -> object:
             captions.CaptionsError,
             {"duration": 3.0, "words": [["fox", 0.1, 0.4]]},
         ),
-        (visuals_write.parse, VisualsError, {"data": [{"b64_json": "iVBORw0KGgo="}]}),
         (
             relay_api.parse_answers,
             relay_api.RelayError,
@@ -97,13 +94,14 @@ def parse_script(raw: bytes) -> object:
                         "recipient": "tara",
                         "answer": "",
                         "audio": {"content_type": "audio/ogg", "base64": "T2dnUw=="},
+                        "image": {"content_type": "image/png", "base64": "iVBORw0KGgo="},
                     }
                 ]
             },
         ),
         (relay_api.parse_sent, relay_api.RelayError, {"id": "msg_01J", "status": "queued"}),
     ],
-    ids=["script", "transcription", "picture", "relay answers", "relay sent"],
+    ids=["script", "transcription", "relay answers", "relay sent"],
 )
 def test_parsers_raise_only_their_own_error(
     parse: Callable[[bytes], object], error: type[Exception], good: dict[str, Any]

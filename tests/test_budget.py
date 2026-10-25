@@ -8,7 +8,6 @@ import pytest
 from reel_bot import budget, config, store, store_videos, videos
 from reel_bot.script_write import Reply
 from reel_bot.videos import Video
-from reel_bot.visuals_write import Drawn
 
 NOW = datetime(2026, 11, 3, 9, 0, tzinfo=UTC)
 
@@ -44,17 +43,12 @@ def test_wrappers_refuse_before_calling_and_record_after(conn: sqlite3.Connectio
         calls.append("claude")
         return Reply("{}", "claude-opus-5-5", 10_000, 5_000)  # $0.14
 
-    def draw(prompt: str) -> Drawn:
-        calls.append("draw")
-        return Drawn(b"png", 0.063)
-
     b.claude(claude)("s", "u", {})
-    b.draw(draw)("p")
-    assert calls == ["claude", "draw"]
-    assert b.spent() == pytest.approx(0.14 + 0.063)
+    assert calls == ["claude"]
+    assert b.spent() == pytest.approx(0.14)
     with pytest.raises(budget.BudgetError, match="a script"):
-        b.claude(claude)("s", "u", {})  # $0.20 spent + $0.35 worst case > $0.40
-    assert calls == ["claude", "draw"]
+        b.claude(claude)("s", "u", {})  # $0.14 spent + $0.35 worst case > $0.40
+    assert calls == ["claude"]
 
 
 @pytest.mark.parametrize(

@@ -14,7 +14,6 @@ from reel_bot.captions import Word
 from reel_bot.captions_write import Heard
 from reel_bot.relay_api import Answer, RelayError
 from reel_bot.script_write import Reply
-from reel_bot.visuals_write import Drawn
 
 NOW = datetime(2026, 10, 25, 8, 0, tzinfo=UTC)
 SCRIPT = json.dumps(
@@ -49,9 +48,10 @@ class FakeRelay:
         self.replies: dict[str, list[Answer]] = {}
         self.down = False
         self.refuse = False  # Relay up, but refusing what is sent
+        self.limit = 1000  # refuse sends after this many
 
     def send(self, message: dict[str, object]) -> str:
-        if self.refuse:
+        if self.refuse or len(self.sent) >= self.limit:
             raise RelayError("refused")
         if self.down:
             raise web.WebError("relay send failed: URLError")
@@ -71,14 +71,8 @@ class FakeRelay:
 
 
 class Calls:
-    def __init__(self, png: bytes = b"\x89PNG\r\n\x1a\nfake") -> None:
-        self.png = png
-
     def claude(self, system: str, user: str, schema: dict[str, Any]) -> Reply:
         return Reply(SCRIPT, "claude-opus-5-5", 1000, 1000)
-
-    def draw(self, prompt: str) -> Drawn:
-        return Drawn(self.png, 0.05)
 
     def transcribe(self, audio: Path) -> Heard:
         said = script.from_json((audio.parent / "script.json").read_text()).spoken().split()
@@ -97,9 +91,7 @@ def make_run(conn: sqlite3.Connection, out: Path, relay: FakeRelay, calls: Calls
     clock = Clock()
 
     def context(vid: str) -> pipeline.Context:
-        return pipeline.Context(
-            out, clock, lambda: calls.claude, lambda: calls.transcribe, lambda: calls.draw
-        )
+        return pipeline.Context(out, clock, lambda: calls.claude, lambda: calls.transcribe)
 
     return daily.Run(conn, relay, daily.People("ali", "tara"), clock, context)
 
@@ -141,17 +133,23 @@ def test_tick_records_the_pick_then_asks_tara_once(
     assert daily.tick(run) == [f"{vid}\twaiting for the pick"]
 
     relay.answer(1, button(relay, choice=2))
-    assert daily.tick(run) == [f"{vid}\tasked for the take"]
+    assert daily.tick(run) == [
+        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
+    ]
     video = store_videos.get_video(conn, vid)
     assert video.story_id == video.story_options[2]
     assert video.chosen_by == "ali"
-    ask = relay.last()
+    ask, *pictures = relay.sent[1:]
     assert ask["to"] == ["tara"]
     assert ask["blocks"][0]["text"].startswith("A hungry fox")
     assert ask["blocks"][1]["reply"] == "voice"
+    assert [p["blocks"][1]["reply"] for p in pictures] == ["image"] * 4
+    assert "A fox, scene 3." in pictures[3]["blocks"][0]["text"]
 
-    assert daily.tick(run) == [f"{vid}\twaiting for the take"]
-    assert len(relay.sent) == 2
+    (line,) = daily.tick(run)
+    assert line.startswith(f"{vid}\twaiting for Tara's take of ")
+    assert line.endswith("and pictures 1, 2, 3, 4 (prompts: reel-bot visuals " + vid + ")")
+    assert len(relay.sent) == 6
 
 
 def test_relay_down_while_waiting_is_not_a_failure(
@@ -182,7 +180,9 @@ def test_a_pick_that_was_not_offered_fails_alerts_ali_and_can_be_retried(
 
     daily.retry(conn, vid)
     relay.answer(1, button(relay))
-    assert daily.tick(run) == [f"{vid}\tasked for the take"]
+    assert daily.tick(run) == [
+        f"{vid}\tasked for the take, picture 1, picture 2, picture 3, picture 4"
+    ]
     with pytest.raises(daily.DailyError, match="has not failed"):
         daily.retry(conn, vid)
 
@@ -202,6 +202,32 @@ def test_a_take_without_audio_fails_even_when_the_alert_cannot_be_sent(
     assert store_daily.steps(conn, vid)["failed"] == "unsent"
 
 
+def test_an_answer_without_a_picture_fails(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    relay = FakeRelay()
+    run = make_run(conn, tmp_path / "out", relay, Calls())
+    vid = str(daily.start(run, "fable", "short", random.Random(1)))
+    relay.answer(1, button(relay))
+    daily.tick(run)
+    relay.answer(3, Answer("tara", "", b"OggS", "audio/ogg"))
+    assert daily.tick(run) == [f"{vid}\tfailed: the answer to picture 1 has no picture"]
+    assert {"label": "Step", "value": "the take and pictures"} in relay.last()["blocks"][0]["items"]
+
+
+def test_asking_tara_resumes_where_relay_stopped(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    relay = FakeRelay()
+    run = make_run(conn, tmp_path / "out", relay, Calls())
+    vid = str(daily.start(run, "fable", "short", random.Random(1)))
+    relay.answer(1, button(relay))
+    relay.limit = 4  # the pick, the take and pictures 1 and 2 go out
+    assert daily.tick(run) == [f"{vid}\tfailed: refused"]
+    daily.retry(conn, vid)
+    relay.limit = 1000
+    assert daily.tick(run) == [f"{vid}\tasked for picture 3, picture 4"]
+    assert [m["idempotency_key"] for m in relay.sent[2:]] == [
+        f"{vid}-picture-{n}" for n in range(1, 5)
+    ]
+
+
 def _ffmpeg(*args: str) -> None:
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args], check=True)  # noqa: S603, S607
 
@@ -214,11 +240,16 @@ def test_a_voice_note_becomes_a_video_sent_to_tara_and_ali(
     _ffmpeg("-f", "lavfi", "-i", "color=c=teal:s=1024x1536", "-frames:v", "1", str(png))
     _ffmpeg("-f", "lavfi", "-i", "sine=frequency=200:duration=6", "-c:a", "libopus", str(take))
     relay = FakeRelay()
-    run = make_run(conn, tmp_path / "out", relay, Calls(png.read_bytes()))
+    run = make_run(conn, tmp_path / "out", relay, Calls())
     vid = str(daily.start(run, "fable", "short", random.Random(1)))
     relay.answer(1, button(relay))
     daily.tick(run)
     relay.answer(2, Answer("tara", "", take.read_bytes(), "audio/ogg"))
+    for n in (3, 4, 5):
+        relay.answer(n, Answer("tara", "", None, "", png.read_bytes()))
+    (line,) = daily.tick(run)
+    assert line.startswith(f"{vid}\twaiting for pictures 4 ")
+    relay.answer(6, Answer("tara", "", None, "", png.read_bytes()))
 
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\tsent ")

@@ -3,13 +3,14 @@
 The message builders and the answer parser are pure; `Relay` sends them with
 `web.Net` (timeout and bounded retries). Every message carries an idempotency
 key made from the video and the step, so a retry or a rerun never sends twice.
-Message bodies, answers and audio are never logged, only IDs.
+Message bodies, answers, audio and pictures are never logged, only IDs.
 """
 
 import base64
 import binascii
 import json
 import mimetypes
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -30,9 +31,10 @@ class RelayError(Exception):
 @dataclass(frozen=True)
 class Answer:
     recipient: str  # Relay username of who answered
-    text: str  # the button or typed reply; "" for a voice note
+    text: str  # the button or typed reply; "" for a voice note or picture
     audio: bytes | None  # a voice note or audio file
     audio_type: str
+    image: bytes | None = None  # a picture (Relay keeps only PNG, JPEG and WebP)
 
     def audio_suffix(self) -> str:
         return _AUDIO_EXT.get(self.audio_type, ".audio")
@@ -75,6 +77,30 @@ def take_message(to: str, video_id: str, title: str, spoken: str) -> dict[str, o
                 "type": "question",
                 "text": "Reply with a voice note of you reading it (or an audio file).",
                 "reply": "voice",
+            },
+        ],
+    }
+
+
+def picture_message(
+    to: str, video_id: str, title: str, prompts: Sequence[str], number: int
+) -> dict[str, object]:
+    """Asks Tara to make picture `number` (from 1) from its prompt and send it back."""
+    prompt, count = prompts[number - 1], len(prompts)
+    if len(prompt) > MAX_TEXT:
+        raise RelayError(f"picture {number}'s prompt is over Relay's {MAX_TEXT} characters")
+    return {
+        "to": [to],
+        "urgency": "normal",
+        "title": f"Picture {number} of {count}: {title}"[:256],
+        "idempotency_key": f"{video_id}-picture-{number}",
+        "blocks": [
+            {"type": "text", "text": prompt},
+            {
+                "type": "question",
+                "text": "Make this picture in ChatGPT and reply to this message with it "
+                "(send it as a file to keep full quality).",
+                "reply": "image",
             },
         ],
     }
@@ -123,26 +149,34 @@ def alert_message(to: str, video_id: str, what: str, error: str, at: str) -> dic
     }
 
 
+def _file(a: dict[str, object], name: str) -> tuple[bytes | None, str]:
+    """An answer's audio or image as (bytes, content type); (None, "") when it has none."""
+    item = a.get(name)
+    if item is None:
+        return None, ""
+    if not isinstance(item, dict):
+        raise RelayError(f"an answer's {name} is not an object")
+    f = cast(dict[str, object], item)
+    kind, data = f.get("content_type"), f.get("base64")
+    if not isinstance(kind, str) or not isinstance(data, str) or not data:
+        raise RelayError(f"an answer's {name} has no content")
+    try:
+        raw = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError) as err:
+        raise RelayError(f"an answer's {name} is not base64") from err
+    return raw, kind.split(";")[0].strip().lower()
+
+
 def _answer(item: object) -> Answer:
     if not isinstance(item, dict):
         raise RelayError("an answer is not an object")
     a = cast(dict[str, object], item)
-    who, text, audio = a.get("recipient"), a.get("answer", ""), a.get("audio")
+    who, text = a.get("recipient"), a.get("answer", "")
     if not isinstance(who, str) or not who or not isinstance(text, str):
         raise RelayError("an answer has no recipient or text")
-    if audio is None:
-        return Answer(who, text, None, "")
-    if not isinstance(audio, dict):
-        raise RelayError("an answer's audio is not an object")
-    au = cast(dict[str, object], audio)
-    kind, data = au.get("content_type"), au.get("base64")
-    if not isinstance(kind, str) or not isinstance(data, str) or not data:
-        raise RelayError("an answer's audio has no content")
-    try:
-        raw = base64.b64decode(data, validate=True)
-    except (binascii.Error, ValueError) as err:
-        raise RelayError("an answer's audio is not base64") from err
-    return Answer(who, text, raw, kind.split(";")[0].strip().lower())
+    audio, audio_type = _file(a, "audio")
+    image, _ = _file(a, "image")  # the bytes decide the type (visuals.suffix)
+    return Answer(who, text, audio, audio_type, image)
 
 
 def parse_answers(body: bytes) -> list[Answer]:

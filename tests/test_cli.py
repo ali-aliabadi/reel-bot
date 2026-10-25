@@ -3,8 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from reel_bot import __version__
+from reel_bot import __version__, script, store, store_videos, videos
 from reel_bot.cli import main
+from reel_bot.script import Paragraph, Script
+from reel_bot.videos import StageRun
+
+NOW = datetime(2026, 10, 25, 8, 0, tzinfo=UTC)
 
 
 def test_version_prints_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -131,17 +135,34 @@ def test_captions_needs_the_whisper_model(
     assert "make models" in capsys.readouterr().err
 
 
-def test_visuals_needs_a_key_then_a_script(
+def test_visuals_lists_missing_prompts_and_adds_pictures(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     env = {"REEL_BOT_DB_PATH": str(tmp_path / "db"), "REEL_BOT_OUT_DIR": str(tmp_path / "out")}
     assert main(["video", "new", "--framing", "fable", "--length", "short"], env) == 0
     vid = capsys.readouterr().out.strip()
     assert main(["visuals", vid], env) == 3
-    assert "OPENAI_API_KEY" in capsys.readouterr().err
-    env["OPENAI_API_KEY"] = "sk-test-not-a-real-key"
-    assert main(["visuals", vid], env) == 3
     assert "no script" in capsys.readouterr().err
+    conn = store.open_db(tmp_path / "db")
+    story = store.all_stories(conn)[0]
+    store_videos.choose_story(conn, vid, story.id, "ali", NOW)
+    paragraphs = (Paragraph("One.", "A fox."), Paragraph("Two.", "A vine."))
+    s = Script(vid, story.id, story.title, "Hook.", paragraphs, "", story.source, story.source_ref)
+    folder = videos.video_dir(tmp_path / "out", vid)
+    (folder / "script.json").write_text(script.to_json(s), encoding="utf-8")
+    store_videos.record_stage(conn, vid, StageRun("script", "script.json", 0, 1, NOW))
+    png = tmp_path / "p.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\nfake")
+
+    assert main(["visuals", vid, "--add", "1", str(png)], env) == 0
+    out = capsys.readouterr().out
+    assert "picture 2 is missing:" in out
+    assert "A vine." in out
+    assert "picture 1" not in out
+    assert main(["visuals", vid, "--add", "two", str(png)], env) == 3
+    assert "not a number" in capsys.readouterr().err
+    assert main(["visuals", vid, "--add", "2", str(png)], env) == 0
+    assert capsys.readouterr().out.strip().endswith("all pictures in")
 
 
 def test_render_lists_the_missing_stages(

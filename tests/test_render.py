@@ -45,6 +45,7 @@ def test_ffmpeg_args_use_relative_files_and_pan_alternately() -> None:
     assert args[-1] == "out.mp4"
     assert args.count("-loop") == 2
     assert args[args.index("-threads") + 1] == "2"
+    assert args[args.index("-x264-params") + 1] == "rc-lookahead=10"  # the memory cap needs it
     graph = args[args.index("-filter_complex") + 1]
     assert "crop=1080:1920:(iw-1080)/2:'(ih-1920)*min(t/10.5,1)'" in graph
     assert "(ih-1920)-(ih-1920)*min(t/14.5,1)" in graph

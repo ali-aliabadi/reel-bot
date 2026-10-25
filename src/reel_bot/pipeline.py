@@ -1,11 +1,12 @@
 """Run every stage a video is ready for, in order, and stop where a person is needed.
 
-A video waits for two people: ali's story pick (`reel-bot video choose`) and
-Tara's take. `advance` runs script and visuals as soon as the story is picked,
-then stops and says it is waiting for the take; given a take, it imports it and
-runs captions and render. Every stage reuses its cached output, so running it
-again costs nothing for the stages already done. Model clients are built only
-when their stage actually runs, so a cached stage needs no API key.
+A video waits for two people: ali's story pick (`reel-bot video choose`), then
+Tara's take and the pictures she makes from the script's prompts. `advance`
+writes the script as soon as the story is picked, then says what it is still
+waiting for; given a take, it imports it, and once the take and every picture
+are in it runs captions and render. Every stage reuses its cached output, so
+running it again costs nothing for the stages already done. Clients are built
+only when their stage actually runs, so a cached script needs no API key.
 """
 
 import logging
@@ -47,14 +48,13 @@ FROM_TAKE = ("captions", "render")
 
 @dataclass(frozen=True)
 class Context:
-    """Where outputs go, the clock, and factories for the paid clients (each called
-    only when its stage actually runs)."""
+    """Where outputs go, the clock, and factories for the clients (each called only
+    when its stage actually runs)."""
 
     out_dir: Path
     clock: Callable[[], datetime]
     claude: Callable[[], script_write.Generate]
     transcribe: Callable[[], captions_write.Transcribe]
-    draw: Callable[[], visuals_write.Draw]
 
 
 @dataclass(frozen=True)
@@ -87,14 +87,20 @@ def advance(conn: sqlite3.Connection, video_id: str, take: Path | None, ctx: Con
     s = script_write.write(conn, out_dir, video_id, _on_first_call(ctx.claude), clock)
     folder = videos.video_dir(out_dir, video_id)
     (folder / READ_FILE).write_text(s.spoken() + "\n", encoding="utf-8")
-    visuals_write.make(conn, out_dir, video_id, _on_first_call(ctx.draw), clock)
+    missing = visuals_write.finish(conn, out_dir, video_id, clock)
 
     if take is not None:
         voice.import_take(conn, out_dir, video_id, take, clock)
         store_videos.clear_stages(conn, video_id, FROM_TAKE)
         log.info("new take; captions and render will be redone", extra={"video_id": video_id})
-    elif "voice" not in store_videos.stage_runs(conn, video_id):
-        return _progress(conn, video_id, f"Tara's take of {folder / READ_FILE}", None)
+    waits: list[str] = []
+    if "voice" not in store_videos.stage_runs(conn, video_id):
+        waits.append(f"Tara's take of {folder / READ_FILE}")
+    if missing:
+        numbers = ", ".join(map(str, missing))
+        waits.append(f"pictures {numbers} (prompts: reel-bot visuals {video_id})")
+    if waits:
+        return _progress(conn, video_id, " and ".join(waits), None)
 
     captions_write.make(conn, out_dir, video_id, _on_first_call(ctx.transcribe), clock)
     done = render_write.make(conn, out_dir, video_id, clock)
