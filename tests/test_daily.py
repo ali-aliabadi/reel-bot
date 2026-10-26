@@ -3,6 +3,8 @@ import random
 import shutil
 import sqlite3
 import subprocess
+import wave
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,7 @@ from reel_bot import (
     daily,
     daily_run,
     daily_tara,
+    guide,
     pipeline,
     publish,
     script,
@@ -193,6 +196,35 @@ def test_tick_records_the_pick_then_asks_tara_once(
     (line,) = daily.tick(run)
     assert line.startswith(f"{vid}\twaiting for Tara's take of ")
     assert len(relay.sent) == 3  # one step at a time: no picture before the take
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("works", [True, False])
+def test_the_take_question_carries_a_reading_guide_when_one_can_be_made(
+    conn: sqlite3.Connection, tmp_path: Path, works: bool
+) -> None:
+    relay = FakeRelay()
+
+    def speak(text: str, out: Path) -> None:
+        if not works:
+            raise guide.GuideError("Kokoro exited 1")
+        with wave.open(str(out), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+            w.writeframes(b"\x00\x00" * 24000 * 30)
+
+    base = make_run(conn, tmp_path / "out", relay, Calls())
+
+    def context(vid: str) -> pipeline.Context:
+        return replace(base.context(vid), speak=lambda: speak)
+
+    run = replace(base, context=context)
+    vid = picked_and_scripted(run, relay)
+    assert daily.tick(run) == [f"{vid}\tasked for the take"]
+    kinds = [b["type"] for b in relay.last()["blocks"]]
+    assert kinds == (["text", "file", "question"] if works else ["text", "question"])
+    assert (tmp_path / "out" / vid / guide.FILENAME).is_file() == works
 
 
 def test_tara_gets_one_picture_at_a_time(conn: sqlite3.Connection, tmp_path: Path) -> None:

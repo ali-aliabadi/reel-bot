@@ -9,6 +9,7 @@ dependencies = [
     # faster-whisper 1.2.1 opens audio with an argument PyAV 17 removed.
     "av>=16,<17",
     "faster-whisper>=1.2",
+    "kokoro-onnx>=0.6.1",
 ]
 
 [project.scripts]
