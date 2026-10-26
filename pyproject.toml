@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.15.0",
     # faster-whisper 1.2.1 opens audio with an argument PyAV 17 removed.
-    "av>=16,<17",
+    "av>=16,<20",
     "faster-whisper>=1.2",
     "kokoro-onnx>=0.6.1",
 ]
