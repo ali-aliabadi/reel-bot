@@ -21,7 +21,13 @@ from reel_bot.videos import StageRun, Video
 PLATFORMS = ("youtube", "instagram", "tiktok")
 TITLE_MAX = 100  # YouTube's limit
 CAPTION_MAX = 2200  # Instagram's and TikTok's limit
-TAGS = "#fables #shorts #storytime"
+TAGS = ("fables", "shorts", "storytime")
+COLLECTION_TAGS = {
+    "Aesop": ("aesop", "aesopsfables"),
+    "Panchatantra": ("panchatantra", "indianfolktales"),
+    "Kalilah and Dimnah": ("kalilahanddimnah", "bidpai"),
+    "Masnavi": ("rumi", "masnavi"),
+}
 _ID = re.compile(r"^[A-Za-z0-9_.~-]{1,200}$")
 CODE_MAX = 2000
 
@@ -34,6 +40,7 @@ class PublishError(Exception):
 class Post:
     title: str
     description: str  # the hook, the source, the AI disclosure and tags
+    tags: tuple[str, ...] = ()  # YouTube's search tags (not shown to viewers)
 
     def caption(self) -> str:
         """The title and description as one caption (Instagram, TikTok)."""
@@ -57,20 +64,24 @@ def check_ready(video: Video, runs: Mapping[str, StageRun]) -> None:
         raise PublishError(f"video {video.id} has no render yet")
 
 
-def post_for(script: Script) -> Post:
-    title = re.sub(r"[<>]", "", script.title).strip()
+def post_for(script: Script, collection: str = "") -> Post:
+    """The model's title and caption when it wrote them, else the story's title and
+    hook; the source, the AI disclosure and the tags are always ours."""
+    title = re.sub(r"[<>]", "", script.post.title or script.title).strip()
     suffix = " #shorts"
+    hashtags = dict.fromkeys([*script.post.hashtags, *COLLECTION_TAGS.get(collection, ()), *TAGS])
     if len(title) + len(suffix) > TITLE_MAX:
         title = title[: TITLE_MAX - len(suffix) - 1].rstrip() + "…"
     description = "\n\n".join(
         [
-            script.hook,
+            script.post.caption or script.hook,
             f"Retold from {script.source}, {script.source_ref}. "
             "Narrated by Tara; the pictures are made with AI.",
-            TAGS,
+            " ".join("#" + t for t in hashtags),
         ]
     )
-    return Post(title + suffix, description)
+    tags = ("fable", "moral story", script.title, collection, *script.post.hashtags)
+    return Post(title + suffix, description, tuple(t for t in tags if t))
 
 
 def code_from(pasted: str, state: str) -> str:

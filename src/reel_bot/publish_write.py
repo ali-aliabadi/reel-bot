@@ -16,7 +16,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from reel_bot import instagram, publish, script, script_write, store_videos, tiktok, videos, youtube
+from reel_bot import (
+    instagram,
+    publish,
+    script,
+    script_write,
+    store,
+    store_videos,
+    tiktok,
+    videos,
+    youtube,
+)
 from reel_bot.publish import PublishError
 from reel_bot.web import Net, WebError
 
@@ -136,7 +146,8 @@ def make(
     publish.check_ready(video, runs)
     folder = videos.video_dir(ctx.out_dir, video_id)
     raw = (folder / script_write.FILENAME).read_text(encoding="utf-8")
-    post = publish.post_for(script.from_json(raw))
+    picked = [s for s in store.all_stories(conn) if s.id == video.story_id]
+    post = publish.post_for(script.from_json(raw), picked[0].collection if picked else "")
     mp4 = folder / runs["render"].path
     done = store_videos.posts(conn, video_id)
     failures: list[str] = []
