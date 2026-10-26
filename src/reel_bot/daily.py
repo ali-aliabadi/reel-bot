@@ -64,7 +64,8 @@ def start(run: Run, framing: str, length: str, rng: random.Random) -> str | None
         if store_videos.get_video(conn, vid).story_id is None:
             log.info("still waiting for a pick", extra={"video_id": vid})
             return None
-    picks = stories.candidates(store.all_stories(conn), store.used_tales(conn), CHOICES, rng)
+    catalog, used = store.all_stories(conn), store.used_tales(conn)
+    picks = stories.candidates(catalog, used, CHOICES, rng, store.offered_tales(conn))
     if not picks:
         raise DailyError("every tale in the catalog has been told")
     now = run.clock()
