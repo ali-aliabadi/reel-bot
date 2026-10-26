@@ -200,6 +200,15 @@ def used_tales(conn: sqlite3.Connection) -> set[str]:
     return {tale for (tale,) in conn.execute("SELECT tale FROM tales_used")}
 
 
+def offered_tales(conn: sqlite3.Connection) -> set[str]:
+    """Tales of every story ever offered for a pick."""
+    rows = conn.execute(
+        "SELECT DISTINCT s.tale FROM videos v, json_each(v.story_options) o"
+        " JOIN stories s ON s.id = o.value"
+    )
+    return {tale for (tale,) in rows}
+
+
 def mark_used(conn: sqlite3.Connection, story_id: str, video_id: str, now: datetime) -> None:
     """Record that a video tells this story; refuses a tale that was already told."""
     row = conn.execute("SELECT tale FROM stories WHERE id = ?", (story_id,)).fetchone()

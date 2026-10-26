@@ -79,3 +79,12 @@ def test_candidates_skip_used_tales_and_never_repeat_a_tale() -> None:
 
 def test_candidates_when_everything_is_used() -> None:
     assert candidates([story("a", "t")], {"t"}, 3, random.Random(0)) == []
+
+
+def test_candidates_offer_fresh_tales_first_then_fill_with_offered_ones() -> None:
+    catalog = [story(f"s{i}", f"t{i}") for i in range(6)]
+    offered = {"t0", "t1", "t2", "t3"}
+    for seed in range(20):
+        got = {s.tale for s in candidates(catalog, set(), 3, random.Random(seed), offered)}
+        assert {"t4", "t5"} < got
+        assert len(got) == 3

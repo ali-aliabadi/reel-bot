@@ -51,3 +51,13 @@ def test_same_tale_in_another_collection_is_refused(conn: sqlite3.Connection) ->
 def test_unknown_story_is_refused(conn: sqlite3.Connection) -> None:
     with pytest.raises(store.UnknownStoryError):
         store.mark_used(conn, "nope", "vid_1", NOW)
+
+
+def test_offered_tales(conn: sqlite3.Connection) -> None:
+    assert store.offered_tales(conn) == set()
+    conn.execute(
+        "INSERT INTO videos (id, created_at, framing, length, story_options)"
+        " VALUES ('vid_1', ?, 'fable', 'short', ?)",
+        (NOW.isoformat(), '["panchatantra-lion", "gone"]'),
+    )
+    assert store.offered_tales(conn) == {"lion-and-hare"}

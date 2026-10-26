@@ -80,13 +80,22 @@ def load_builtin() -> list[Story]:
 
 
 def candidates(
-    stories: Iterable[Story], used_tales: set[str], n: int, rng: random.Random
+    stories: Iterable[Story],
+    used_tales: set[str],
+    n: int,
+    rng: random.Random,
+    offered_tales: frozenset[str] | set[str] = frozenset(),
 ) -> list[Story]:
-    """Up to n stories from different, unused tales, for ali to pick from."""
+    """Up to n stories from different, unused tales, for ali to pick from.
+
+    Tales never offered before come first; offered ones return only to fill the n.
+    """
     by_tale: dict[str, list[Story]] = {}
     for story in stories:
         if story.tale not in used_tales:
             by_tale.setdefault(story.tale, []).append(story)
-    tales = sorted(by_tale)
-    picked = rng.sample(tales, min(n, len(tales)))
+    fresh = sorted(t for t in by_tale if t not in offered_tales)
+    stale = sorted(t for t in by_tale if t in offered_tales)
+    picked = rng.sample(fresh, min(n, len(fresh)))
+    picked += rng.sample(stale, min(n - len(picked), len(stale)))
     return [rng.choice(by_tale[tale]) for tale in picked]
