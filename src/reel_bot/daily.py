@@ -22,6 +22,9 @@ import sqlite3
 
 from reel_bot import (
     pipeline,
+    publish,
+    script,
+    script_write,
     store,
     store_daily,
     store_videos,
@@ -137,7 +140,9 @@ def _advance(run: Run, vid: str) -> str:
         asked = next_picture(run, vid, story.title, sent)
         return f"asked for picture {asked}" if asked else f"waiting for {done.waiting}"
     to = [run.people.narrator, run.people.picker]
-    mid = run.relay.send(file_message(to, vid, story.title, done.render))
+    raw = (videos.video_dir(ctx.out_dir, vid) / script_write.FILENAME).read_text("utf-8")
+    post = publish.post_for(script.from_json(raw), story.collection)
+    mid = run.relay.send(file_message(to, vid, story.title, done.render, post.for_copying()))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
     return f"sent {done.render} (${done.cost_usd():.2f})"
 

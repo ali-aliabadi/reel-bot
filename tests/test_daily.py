@@ -14,6 +14,7 @@ from reel_bot import (
     daily_run,
     daily_tara,
     pipeline,
+    publish,
     script,
     store,
     store_daily,
@@ -415,5 +416,9 @@ def test_a_voice_note_becomes_a_video_sent_to_tara_and_ali(
     sent = relay.last()
     assert sent["to"] == ["tara", "ali"]
     assert sent["blocks"][1]["filename"] == f"{vid}.mp4"
+    copy = [b["text"] for b in sent["blocks"][2:]]
+    assert copy[0::2] == [label for label, _ in publish.Post("", "").for_copying()]
+    assert copy[1].endswith(" #shorts")
+    assert "made with AI" in copy[3]
     assert (tmp_path / "out" / vid / "take.ogg").read_bytes() == take.read_bytes()
     assert daily.tick(run) == []  # done: nothing is sent twice

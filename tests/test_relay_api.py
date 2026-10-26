@@ -100,6 +100,10 @@ def test_file_message_attaches_the_video_once_per_person(tmp_path: Path) -> None
     assert f["type"] == "file"
     assert f["content_type"] == "video/mp4"
     assert base64.b64decode(f["base64"]) == mp4.read_bytes()
+    copy = [("YouTube title", "T"), ("Caption", "c" * 5000)]
+    blocks = cast(list[Any], relay_api.file_message(["t"], "v", "T", mp4, copy)["blocks"])
+    assert blocks[2:4] == [{"type": "text", "text": "YouTube title"}, {"type": "code", "text": "T"}]
+    assert len(blocks[5]["text"]) == relay_api.MAX_TEXT
 
 
 def test_file_message_refuses_an_empty_or_huge_video(

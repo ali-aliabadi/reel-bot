@@ -145,7 +145,14 @@ def again(message: dict[str, object], attempt: int, problem: str) -> dict[str, o
     }
 
 
-def file_message(to: list[str], video_id: str, title: str, path: Path) -> dict[str, object]:
+def file_message(
+    to: list[str],
+    video_id: str,
+    title: str,
+    path: Path,
+    copy: Sequence[tuple[str, str]] = (),
+) -> dict[str, object]:
+    """The finished video, then each (label, text) in `copy` as a block to copy."""
     size = path.stat().st_size
     if not 0 < size <= MAX_FILE_BYTES:
         raise RelayError(f"the video is {size >> 20} MB; Relay can send 1 byte to 45 MB")
@@ -163,6 +170,14 @@ def file_message(to: list[str], video_id: str, title: str, path: Path) -> dict[s
                 "base64": base64.b64encode(path.read_bytes()).decode("ascii"),
                 "caption": title[:1024],
             },
+            *(
+                block
+                for label, text in copy
+                for block in (
+                    {"type": "text", "text": label},
+                    {"type": "code", "text": text[:MAX_TEXT]},
+                )
+            ),
         ],
     }
 
