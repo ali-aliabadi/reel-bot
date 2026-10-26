@@ -7,6 +7,11 @@ updates:
     groups:
       python-deps:
         patterns: ["*"]
+    ignore:
+      # faster-whisper 1.2.1 breaks on PyAV 17+ (see pyproject.toml); security
+      # alerts still come. Drop this when faster-whisper supports a newer PyAV.
+      - dependency-name: av
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
