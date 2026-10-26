@@ -71,7 +71,10 @@ def test_post_names_the_source_and_discloses_ai() -> None:
     assert post.title == "The Fox #shorts"
     assert "Retold from Townsend, p. 1" in post.description
     assert "made with AI" in post.description
-    assert post.caption().startswith("The Fox #shorts\n\nA hungry fox.")
+    assert post.caption().startswith("The Fox\n\nA hungry fox.")  # #shorts is in the tags
+    labels = [label for label, _ in post.for_copying()]
+    assert labels[0] == "YouTube title"
+    assert labels[-1] == "Instagram and TikTok caption"
 
 
 def test_post_uses_the_models_words_and_the_collection_tags() -> None:

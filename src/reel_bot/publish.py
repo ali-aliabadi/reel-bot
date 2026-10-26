@@ -43,8 +43,19 @@ class Post:
     tags: tuple[str, ...] = ()  # YouTube's search tags (not shown to viewers)
 
     def caption(self) -> str:
-        """The title and description as one caption (Instagram, TikTok)."""
-        return f"{self.title}\n\n{self.description}"[:CAPTION_MAX]
+        """The title and description as one caption (Instagram, TikTok); #shorts is
+        already in the description's hashtags."""
+        title = self.title.removesuffix(" #shorts")
+        return f"{title}\n\n{self.description}"[:CAPTION_MAX]
+
+    def for_copying(self) -> list[tuple[str, str]]:
+        """(label, text) pairs for posting by hand."""
+        return [
+            ("YouTube title", self.title),
+            ("YouTube description", self.description),
+            ("YouTube tags (under Show more)", ", ".join(self.tags)),
+            ("Instagram and TikTok caption", self.caption()),
+        ]
 
 
 @dataclass(frozen=True)
