@@ -2,6 +2,7 @@
 Nothing here talks to YouTube, Instagram or TikTok."""
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -10,7 +11,7 @@ import pytest
 
 from reel_bot import instagram, publish, tiktok, youtube
 from reel_bot.publish import Post, PublishError
-from reel_bot.script import Paragraph, Script
+from reel_bot.script import Paragraph, PostText, Script
 from reel_bot.videos import StageRun, Video
 from reel_bot.web import Reply, Request
 
@@ -71,6 +72,21 @@ def test_post_names_the_source_and_discloses_ai() -> None:
     assert "Retold from Townsend, p. 1" in post.description
     assert "made with AI" in post.description
     assert post.caption().startswith("The Fox #shorts\n\nA hungry fox.")
+
+
+def test_post_uses_the_models_words_and_the_collection_tags() -> None:
+    words = PostText("He called them sour", "A fox and a high vine.", ("sourgrapes", "aesop"))
+    post = publish.post_for(replace(make_script(), post=words), "Aesop")
+    assert post.title == "He called them sour #shorts"
+    assert post.description.startswith("A fox and a high vine.\n\nRetold from Townsend, p. 1.")
+    assert post.description.endswith("#sourgrapes #aesop #aesopsfables #fables #shorts #storytime")
+    assert post.tags == ("fable", "moral story", "The Fox and the Grapes", "Aesop", *words.hashtags)
+
+
+def test_post_without_model_words_keeps_the_defaults() -> None:
+    post = publish.post_for(make_script(), "Unknown")
+    assert post.title == "The Fox and the Grapes #shorts"
+    assert post.description.endswith("\n\n#fables #shorts #storytime")
 
 
 def test_long_titles_fit_youtube() -> None:

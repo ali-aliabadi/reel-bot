@@ -93,7 +93,12 @@ def access(net: Net, app: App, saved: dict[str, str]) -> tuple[str, dict[str, st
 def upload(net: Net, app: App, token: str, video: Path, post: Post) -> str:
     data = video.read_bytes()  # ponytail: whole file in memory; fine for a ~20 MB short
     meta = {
-        "snippet": {"title": post.title, "description": post.description, "categoryId": CATEGORY},
+        "snippet": {
+            "title": post.title,
+            "description": post.description,
+            "tags": list(post.tags),
+            "categoryId": CATEGORY,
+        },
         "status": {
             "privacyStatus": app.privacy,
             "selfDeclaredMadeForKids": False,

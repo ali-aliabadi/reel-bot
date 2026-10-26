@@ -9,6 +9,7 @@ same brief as one message to paste into a chat app (ChatGPT) by hand.
 """
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -20,6 +21,8 @@ WORDS = {"short": (95, 120), "long": (150, 200)}
 LESSON = {"fable": False, "lesson": True}
 PARAGRAPHS = (3, 6)
 HOOK_MAX_WORDS = 14
+POST_TITLE_MAX, POST_CAPTION_MAX, HASHTAGS_MAX = 60, 300, 3
+_HASHTAG = re.compile(r"^[a-z][a-z0-9]{1,29}$")
 PICTURE_STYLE = (
     "Persian miniature painting, flat perspective, rich lapis blue and gold, "
     "fine ornamental border, soft daylight, no text or letters"
@@ -37,6 +40,15 @@ class Paragraph:
 
 
 @dataclass(frozen=True)
+class PostText:
+    """The model's words for the post; empty fields fall back to the defaults."""
+
+    title: str = ""
+    caption: str = ""
+    hashtags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Script:
     video_id: str
     story_id: str
@@ -46,6 +58,7 @@ class Script:
     lesson: str  # "" when the framing has no lesson
     source: str
     source_ref: str
+    post: PostText = PostText()
 
     def spoken(self) -> str:
         """Everything Tara reads, in order."""
@@ -72,6 +85,16 @@ SCHEMA: dict[str, Any] = {
             },
         },
         "lesson": {"type": "string"},
+        "post": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "caption": {"type": "string"},
+                "hashtags": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["title", "caption", "hashtags"],
+            "additionalProperties": False,
+        },
     },
     "required": ["hook", "paragraphs", "lesson"],
     "additionalProperties": False,
@@ -89,7 +112,13 @@ source tells it: keep its characters, events and ending. Write your own words;
 never quote a modern translation.
 
 For each paragraph, describe its picture in one sentence: who is in it, where,
-doing what. No words, letters or signs in pictures. Never describe real people."""
+doing what. No words, letters or signs in pictures. Never describe real people.
+
+Last, write the post that goes with the video. "title": at most 60
+characters, makes a scroller curious without giving away the ending. "caption":
+one or two sentences, at most 300 characters. Neither has hashtags, links, @
+names or emoji. "hashtags": up to 3 lowercase words without "#" about this
+tale's name or theme, such as "sourgrapes"."""
 
 
 def prompt(story: Story, video: Video) -> str:
@@ -112,7 +141,10 @@ def prompt(story: Story, video: Video) -> str:
     )
 
 
-CHAT_FORMAT = '{"hook": "...", "paragraphs": [{"text": "...", "picture": "..."}], "lesson": ""}'
+CHAT_FORMAT = (
+    '{"hook": "...", "paragraphs": [{"text": "...", "picture": "..."}], "lesson": "", '
+    '"post": {"title": "...", "caption": "...", "hashtags": ["..."]}}'
+)
 
 
 def chat_prompt(story: Story, video: Video) -> str:
@@ -153,6 +185,29 @@ def parse(raw: str, story: Story, video: Video) -> Script:
         lesson=lesson,
         source=story.source,
         source_ref=story.source_ref,
+        post=post_text(data.get("post")),
+    )
+
+
+def _plain(value: object, limit: int) -> str:
+    """One line of model text with no tags, links or names, or "" when it has them."""
+    text = " ".join(value.split()) if isinstance(value, str) else ""
+    return "" if len(text) > limit or re.search(r"[#@<>]|https?:|www\.", text) else text
+
+
+def post_text(raw: object) -> PostText:
+    """The reply's post part, keeping only what is safe to publish; never raises."""
+    if not isinstance(raw, dict):
+        return PostText()
+    data = cast(dict[str, object], raw)
+    tags = data.get("hashtags")
+    items = cast(list[object], tags) if isinstance(tags, list) else []
+    words = [t.strip().lstrip("#").lower() for t in items if isinstance(t, str)]
+    kept = tuple(dict.fromkeys(w for w in words if _HASHTAG.match(w)))[:HASHTAGS_MAX]
+    return PostText(
+        _plain(data.get("title"), POST_TITLE_MAX),
+        _plain(data.get("caption"), POST_CAPTION_MAX),
+        kept,
     )
 
 
@@ -188,6 +243,11 @@ def to_json(script: Script) -> str:
             "lesson": script.lesson,
             "source": script.source,
             "source_ref": script.source_ref,
+            "post": {
+                "title": script.post.title,
+                "caption": script.post.caption,
+                "hashtags": list(script.post.hashtags),
+            },
             "picture_style": PICTURE_STYLE,
         },
         ensure_ascii=False,
@@ -209,4 +269,5 @@ def from_json(raw: str) -> Script:
         lesson=data["lesson"],
         source=data["source"],
         source_ref=data["source_ref"],
+        post=post_text(data.get("post")),  # scripts saved before posts had text have none
     )
