@@ -56,8 +56,13 @@ def _ffmpeg(*args: str) -> None:
 
 
 @needs_ffmpeg
-def test_renders_a_five_second_clip(conn: sqlite3.Connection, tmp_path: Path) -> None:
-    out = tmp_path / "out"
+@pytest.mark.parametrize("relative", [False, True])
+def test_renders_a_five_second_clip(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: bool
+) -> None:
+    # The VPS uses the default out dir "out", relative to the checkout.
+    monkeypatch.chdir(tmp_path)
+    out = Path("out") if relative else tmp_path / "out"
     v = new_video(conn)
     folder = videos.video_dir(out, v.id)
     for i, color in ((1, "navy"), (2, "goldenrod")):

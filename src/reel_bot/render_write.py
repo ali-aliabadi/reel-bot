@@ -56,7 +56,7 @@ def _probe(path: Path) -> tuple[int, int, float, bool]:
     """(width, height, seconds, has audio) of a rendered file."""
     out = _run(
         ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,width,height"
-         ":format=duration", "-of", "json", str(path)],
+         ":format=duration", "-of", "json", path.name],
         path.parent, 60,
     )  # fmt: skip
     data = cast(dict[str, Any], json.loads(out))
@@ -74,7 +74,7 @@ def _probe(path: Path) -> tuple[int, int, float, bool]:
 
 def _take_seconds(take: Path) -> float:
     try:
-        return voice.duration(_run(voice.probe_args(take), take.parent, 60))
+        return voice.duration(_run(voice.probe_args(Path(take.name)), take.parent, 60))
     except voice.VoiceError as err:
         raise render.RenderError(f"cannot read the take: {err}") from err
 
