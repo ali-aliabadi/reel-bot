@@ -91,6 +91,19 @@ def test_script_message_asks_for_chatgpts_answer_then_fixes() -> None:
         relay_api.script_message("tara", "vid_1", FOX.title, "x" * 4001, 1)
 
 
+def test_take_message_carries_the_guide_before_the_question(tmp_path: Path) -> None:
+    assert [b["type"] for b in relay_api.take_message("tara", "v", "T", "Read me.")["blocks"]] == [  # type: ignore[index]
+        "text",
+        "question",
+    ]
+    mp3 = tmp_path / "guide.mp3"
+    mp3.write_bytes(b"ID3audio")
+    blocks = cast(list[Any], relay_api.take_message("tara", "v", "T", "Read me.", mp3)["blocks"])
+    assert [b["type"] for b in blocks] == ["text", "file", "question"]
+    assert blocks[1]["content_type"] == "audio/mpeg"
+    assert base64.b64decode(blocks[1]["base64"]) == b"ID3audio"
+
+
 def test_file_message_attaches_the_video_once_per_person(tmp_path: Path) -> None:
     mp4 = tmp_path / "render.mp4"
     mp4.write_bytes(b"\x00\x00\x00\x18ftypmp42")

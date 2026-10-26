@@ -56,6 +56,7 @@ should be one small PR unless noted. Design details are in
 - [x] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render (units in `deploy/systemd`)
 - [ ] ali: set `REEL_BOT_NARRATOR` in the VPS's `.env` and install the timers (`deploy/README.md`)
 - [ ] Grow the catalog: every tale in the four public-domain sources, with source references
+- [x] Reading guide for Tara: the script read by a local TTS (Kokoro) at 2.3 words a second, sent with the voice-note question
 
 ## Phase 4: metrics and decisions
 

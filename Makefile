@@ -22,8 +22,15 @@ tools: ## install Python, the locked dev tools and gitleaks (run once)
 	scripts/install-gitleaks.sh $(GITLEAKS_VERSION) $(TOOLS)
 
 .PHONY: models
-models: ## download the Whisper model for captions into models/ (run once; about 150 MB)
+KOKORO_URL := https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+
+models: ## download the Whisper (captions) and Kokoro (reading guide) models into models/ (run once; about 270 MB)
 	uv run python -c "from faster_whisper import download_model; from reel_bot.captions_write import MODEL, MODEL_DIR; download_model(MODEL, output_dir=str(MODEL_DIR))"
+	mkdir -p models/kokoro
+	cd models/kokoro && for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do [ -f $$f ] || { curl -fsSL -o $$f.part $(KOKORO_URL)/$$f && mv $$f.part $$f; } || exit 1; done
+	cd models/kokoro && printf '%s\n' \
+		'6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb  kokoro-v1.0.int8.onnx' \
+		'bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d  voices-v1.0.bin' | shasum -a 256 -c
 
 .PHONY: run
 run: ## run the CLI (reads .env if present), e.g. make run ARGS=version

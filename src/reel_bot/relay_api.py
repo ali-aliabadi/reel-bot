@@ -63,9 +63,19 @@ def pick_message(to: str, video_id: str, stories: list[Story]) -> dict[str, obje
     }
 
 
-def take_message(to: str, video_id: str, title: str, spoken: str) -> dict[str, object]:
+def take_message(
+    to: str, video_id: str, title: str, spoken: str, guide: Path | None = None
+) -> dict[str, object]:
+    """Asks Tara to read `spoken`, with `guide` (the script read aloud) to listen to first."""
     if len(spoken) > MAX_TEXT:
         raise RelayError(f"the script is {len(spoken)} characters, over Relay's {MAX_TEXT}")
+    listen = guide and {
+        "type": "file",
+        "filename": f"{video_id}-guide.mp3",
+        "content_type": "audio/mpeg",
+        "base64": base64.b64encode(guide.read_bytes()).decode("ascii"),
+        "caption": "Listen first: the script read at the right pace. Then send your own reading.",
+    }
     return {
         "to": [to],
         "urgency": "normal",
@@ -73,6 +83,7 @@ def take_message(to: str, video_id: str, title: str, spoken: str) -> dict[str, o
         "idempotency_key": f"{video_id}-take",
         "blocks": [
             {"type": "text", "text": spoken},
+            *([listen] if listen else []),
             {
                 "type": "question",
                 "text": "Reply with a voice note of you reading it (or an audio file).",

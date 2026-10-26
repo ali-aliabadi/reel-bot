@@ -8,8 +8,10 @@ asks twice.
 """
 
 import logging
+from pathlib import Path
 
 from reel_bot import (
+    guide,
     pipeline,
     script,
     script_write,
@@ -53,11 +55,28 @@ def script_step(run: Run, video: videos.Video, story: Story, sent: dict[str, str
 
 
 def _take_message(run: Run, vid: str, title: str) -> dict[str, object]:
-    read = videos.video_dir(run.context(vid).out_dir, vid) / pipeline.READ_FILE
-    return take_message(run.people.narrator, vid, title, read.read_text("utf-8").strip())
+    folder = videos.video_dir(run.context(vid).out_dir, vid)
+    listen = folder / guide.FILENAME
+    text = (folder / pipeline.READ_FILE).read_text("utf-8").strip()
+    return take_message(run.people.narrator, vid, title, text, listen if listen.is_file() else None)
+
+
+def _make_guide(run: Run, vid: str) -> Path | None:
+    """Tara's reading guide; a guide that can't be made is logged and skipped, since
+    Tara can read without it."""
+    ctx = run.context(vid)
+    if ctx.speak is None:
+        return None
+    folder = videos.video_dir(ctx.out_dir, vid)
+    try:
+        return guide.make(folder, (folder / pipeline.READ_FILE).read_text("utf-8"), ctx.speak())
+    except guide.GuideError as err:
+        log.warning("no reading guide", extra={"video_id": vid, "error": str(err)})
+        return None
 
 
 def ask_take(run: Run, vid: str, title: str) -> str:
+    _make_guide(run, vid)
     mid = run.relay.send(_take_message(run, vid, title))
     store_daily.add_step(run.conn, vid, "take", mid, run.clock())
     return "asked for the take"

@@ -8,7 +8,7 @@ The daily run is two systemd timers (units in `systemd/`):
   renders the video and sends her (and ali) the MP4 with its post text to copy.
 
 Before installing: the Phase 0 VPS steps in `docs/ROADMAP.md` are done (checkout in
-`/opt/reel-bot`, `make tools`, `make models` for the captions' Whisper model, `.env` with the Relay key (no Anthropic key needed) and
+`/opt/reel-bot`, `make tools`, `make models` for the captions' Whisper model and the reading guide's Kokoro model, `.env` with the Relay key (no Anthropic key needed) and
 `REEL_BOT_NARRATOR`), `make run ARGS=config` is clean, and Relay accepts files up to
 45 MB and takes picture answers: Relay with the 45 MB file limit and `reply: "image"` questions, `RELAY_MAX_BODY_BYTES=67108864` in `/opt/relay/.env`,
 and `RELAY_URL=http://127.0.0.1:18080` in reel-bot's `.env` so the videos skip nginx and

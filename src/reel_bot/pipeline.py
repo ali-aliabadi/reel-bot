@@ -20,6 +20,7 @@ from reel_bot import (
     budget,
     captions,
     captions_write,
+    guide,
     render,
     render_write,
     script,
@@ -55,6 +56,7 @@ class Context:
     clock: Callable[[], datetime]
     claude: Callable[[], script_write.Generate]
     transcribe: Callable[[], captions_write.Transcribe]
+    speak: Callable[[], guide.Speak] | None = None  # Tara's reading guide; None makes none
 
 
 @dataclass(frozen=True)

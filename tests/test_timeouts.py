@@ -15,6 +15,7 @@ import pytest
 from reel_bot import (
     captions,
     captions_write,
+    guide,
     relay_api,
     render,
     render_write,
@@ -71,6 +72,14 @@ def test_whisper_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     (tmp_path / "model.bin").write_bytes(b"")
     with pytest.raises(captions.CaptionsError, match="took over"):
         captions_write.local(tmp_path, timeout_s=0.5)(tmp_path / "voice.wav")
+
+
+def test_kokoro_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(guide, "KOKORO", [sys.executable, "-c", "import time; time.sleep(60)"])
+    for name in (guide.MODEL_FILE, guide.VOICES_FILE):
+        (tmp_path / name).write_bytes(b"")
+    with pytest.raises(guide.GuideError, match="took over"):
+        guide.local(tmp_path, timeout_s=0.5)("Hello.", tmp_path / "out.wav")
 
 
 @needs_ffmpeg

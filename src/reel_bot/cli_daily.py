@@ -14,6 +14,7 @@ from reel_bot import (
     config,
     daily,
     daily_run,
+    guide,
     pipeline,
     relay_api,
     script_write,
@@ -50,6 +51,7 @@ def _context(
             clock=clock,
             claude=lambda: b.claude(script_write.claude()),
             transcribe=captions_write.local,
+            speak=guide.local,
         )
 
     return make
