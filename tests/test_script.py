@@ -1,4 +1,5 @@
 import json
+import re
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -83,6 +84,18 @@ def test_parse_and_check_a_good_script(snapshot: Callable[[str, str], None]) -> 
 def test_problems_are_named(raw: str, video: Video, expect: str) -> None:
     found = script.problems(script.parse(raw, STORY, video), video)
     assert any(expect in p for p in found), found
+
+
+def test_a_little_long_is_accepted_but_too_long_asks_for_the_brief() -> None:
+    ok = script.parse(reply(words_per_paragraph=35), STORY, SHORT_FABLE)  # 147 words
+    assert script.problems(ok, SHORT_FABLE) == []
+    long = script.parse(reply(words_per_paragraph=37), STORY, SHORT_FABLE)  # 155 words
+    assert script.problems(long, SHORT_FABLE) == ["it has 155 words; it needs 95 to 120"]
+
+
+def test_parse_takes_curly_quotes() -> None:
+    curly = re.sub(r'"([^"]*)"', "“\\1”", reply())
+    assert script.parse(curly, STORY, SHORT_FABLE) == script.parse(reply(), STORY, SHORT_FABLE)
 
 
 def test_long_hook_and_missing_picture() -> None:

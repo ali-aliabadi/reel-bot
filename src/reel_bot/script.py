@@ -18,6 +18,10 @@ from reel_bot.videos import Video
 
 # Tara reads at about 2.3 words a second: short is about 45 s, long 61 to 90 s.
 WORDS = {"short": (95, 120), "long": (150, 200)}
+# What the check accepts: the brief asks for WORDS, but a script a little long is
+# still fine to read (150 words is about 65 s), so no fix is asked for it.
+WORDS_ACCEPTED = {"short": (95, 150), "long": (150, 200)}
+_CURLY = str.maketrans("“”", '""')
 LESSON = {"fable": False, "lesson": True}
 PARAGRAPHS = (3, 6)
 HOOK_MAX_WORDS = 14
@@ -164,11 +168,20 @@ def chat_fix(found: list[str]) -> str:
     )
 
 
+def _loads(text: str) -> object:
+    """JSON, or the same with curly double quotes made straight: a chat answer
+    copied as plain text instead of from its code block comes with them."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return json.loads(text.translate(_CURLY))
+
+
 def parse(raw: str, story: Story, video: Video) -> Script:
     """The model's JSON reply as a Script, ignoring any text or code fence around
     the object (a pasted chat answer). Raises ScriptError on a bad shape."""
     try:
-        data = cast(dict[str, Any], json.loads(raw[raw.find("{") : raw.rfind("}") + 1]))
+        data = cast(dict[str, Any], _loads(raw[raw.find("{") : raw.rfind("}") + 1]))
         paragraphs = tuple(
             Paragraph(str(p["text"]).strip(), str(p["picture"]).strip())
             for p in cast(list[dict[str, Any]], data["paragraphs"])
@@ -215,7 +228,8 @@ def problems(script: Script, video: Video) -> list[str]:
     """What is wrong with a script for this video; empty when it's usable."""
     out: list[str] = []
     low, high = WORDS[video.length]
-    if not low <= script.words() <= high:
+    least, most = WORDS_ACCEPTED[video.length]
+    if not least <= script.words() <= most:
         out.append(f"it has {script.words()} words; it needs {low} to {high}")
     if not PARAGRAPHS[0] <= len(script.paragraphs) <= PARAGRAPHS[1]:
         out.append(

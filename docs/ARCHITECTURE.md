@@ -69,7 +69,7 @@ SQLite at `./data/reel-bot.db` (`REEL_BOT_DB_PATH`). Tables, added by roadmap it
 
 `reel-bot video new --framing fable --length short` creates a video and prints its ID, `reel-bot video choose <video id> <story id> --by ali` records the human pick, and `reel-bot video show <video id>` prints the settings, the pick and each finished stage.
 
-`reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second).
+`reel-bot script <video id>` writes `out/<video id>/script.json` once the story is picked; a rerun reuses it. Word budgets asked for: short 95-120 spoken words, long 150-200 (Tara reads about 2.3 words a second); the check accepts a short script up to 150 without asking for a fix. A pasted answer with curly double quotes (copied as plain text) is read with them made straight.
 
 `reel-bot make <video id>` runs every stage the video is ready for and prints each stage's cost and time: with a picked story it writes the script (also as `read-this.txt` for Tara), then stops waiting for Tara's take and pictures; `reel-bot make <video id> --voice <file>` imports the take (a new take redoes captions and render) and finishes with `render.mp4`. Cached stages are reused and need no API key.
 

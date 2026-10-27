@@ -85,9 +85,9 @@ def test_add_records_a_usable_pasted_script_for_free(
     assert script_write.add(conn, out, v.id, "not json", Clock()) == [
         "it is not the JSON asked for"
     ]
-    long = good().replace('"w w', '"' + "w " * 40 + "w", 1)
+    long = good().replace('"w w', '"' + "w " * 50 + "w", 1)
     assert script_write.add(conn, out, v.id, long, Clock()) == [
-        "it has 148 words; it needs 95 to 120"
+        "it has 158 words; it needs 95 to 120"
     ]
     assert "script" not in store_videos.stage_runs(conn, v.id)
     assert script_write.add(conn, out, v.id, f"```json\n{good()}\n```", Clock()) == []
