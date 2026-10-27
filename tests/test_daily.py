@@ -264,7 +264,7 @@ def test_a_script_with_problems_goes_back_to_chatgpt_twice_then_stops(
     fix = relay.last()
     assert fix["idempotency_key"] == f"{vid}-script-2"
     assert "it is not the JSON asked for" in fix["blocks"][1]["text"]
-    relay.answer(3, pasted(SCRIPT.replace("word0", "word0 extra")))
+    relay.answer(3, pasted(SCRIPT.replace("word0", "word0 extra extra")))
     assert daily.tick(run) == [f"{vid}\tasked for fix 2 of the script"]
     relay.answer(4, pasted(json.dumps({"hook": "", "paragraphs": [], "lesson": ""})))
     assert ticks(run, 1).startswith(f"{vid}\terror 1 of 3, trying again next tick: ChatGPT's")
