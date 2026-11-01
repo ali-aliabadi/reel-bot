@@ -14,5 +14,9 @@ ExecStart=/opt/reel-bot/.venv/bin/reel-bot daily tick
 TimeoutStartSec=30min
 Nice=10
 IOSchedulingClass=idle
-MemoryMax=700M
+# Kokoro (Tara's reading guide) alone peaks around 660 MB resident; 1200M leaves room
+# for the parent and ffmpeg. If a child is still killed for memory, the tick carries
+# on without it (a guide that can't be made is skipped) instead of dying whole.
+MemoryMax=1200M
+OOMPolicy=continue
 MemorySwapMax=0

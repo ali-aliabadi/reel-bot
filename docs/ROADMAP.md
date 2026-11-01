@@ -70,5 +70,6 @@ should be one small PR unless noted. Design details are in
 
 - [x] `publish` stage: YouTube, Instagram Reels and TikTok uploads, gated on a recorded pick (also in the database), AI label set, one post per platform, `reel-bot auth` and `reel-bot publish`
 - [ ] Public on YouTube and TikTok once each audit passes (`TIKTOK_PRIVACY=PUBLIC_TO_EVERYONE`)
-- [ ] Run on the VPS with a deploy workflow like relay's
+- [x] Run on the VPS with a deploy workflow like relay's (`deploy.yml` after ci on master, a forced-command SSH key running `scripts/deploy.sh`)
+- [ ] ali: add the deploy key on the VPS and the `VPS_*` secrets and `production` environment in GitHub (`deploy/README.md`)
 - [ ] A/B hooks

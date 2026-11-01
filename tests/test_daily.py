@@ -312,6 +312,27 @@ def test_errors_are_retried_then_stop_the_video_with_an_alert_and_can_be_retried
         daily.retry(conn, vid)
 
 
+def test_ticks_killed_before_finishing_stop_the_video_with_an_alert(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    relay = FakeRelay()
+    run = make_run(conn, tmp_path / "out", relay, Calls())
+    vid = str(daily.start(run, "fable", "short", random.Random(1)))
+    for _ in range(daily.MAX_ERRORS):  # each tick is killed (out of memory) mid-way
+        store_daily.begin(conn, vid, NOW)
+    relay.refuse = True
+    assert ticks(run, 1).startswith(f"{vid}\tfailed, alert not sent yet")
+    relay.refuse = False
+    assert daily.tick(run) == [
+        f"{vid}\tfailed: the last 4 ticks on it were killed before finishing"
+    ]
+    assert relay.last()["urgency"] == "high"
+    assert daily.tick(run) == []
+    daily.retry(conn, vid)
+    assert daily.tick(run) == [f"{vid}\twaiting for the pick"]
+    assert store_daily.begin(conn, vid, NOW) == 1  # a finished tick cleared the count
+
+
 def test_a_passing_error_heals_on_the_next_tick(conn: sqlite3.Connection, tmp_path: Path) -> None:
     relay = FakeRelay()
     run = make_run(conn, tmp_path / "out", relay, Calls())
