@@ -141,6 +141,24 @@ MIGRATIONS = (
         at TEXT NOT NULL
     );
     """,
+    """
+    -- A daily video can be cancelled: ali's "Skip today", an unanswered pick
+    -- replaced the next morning, or `reel-bot daily cancel`.
+    CREATE TABLE daily_steps_new (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        step TEXT NOT NULL CHECK (
+            step IN ('pick', 'take', 'sent', 'failed', 'cancelled')
+            OR step GLOB 'picture-[1-6]' OR step GLOB 'script-[1-3]'
+        ),
+        message_id TEXT NOT NULL,  -- Relay's message ID ('' when nothing was sent)
+        at TEXT NOT NULL,
+        asks INTEGER NOT NULL DEFAULT 1,
+        PRIMARY KEY (video_id, step)
+    );
+    INSERT INTO daily_steps_new SELECT video_id, step, message_id, at, asks FROM daily_steps;
+    DROP TABLE daily_steps;
+    ALTER TABLE daily_steps_new RENAME TO daily_steps;
+    """,
 )
 
 

@@ -21,6 +21,7 @@ from reel_bot.stories import Story
 MAX_FILE_BYTES = 45 << 20  # under Telegram's 50 MB bot upload; Relay must allow it too
 MAX_OPTION = 64  # Relay's limit on one button's text
 MAX_TEXT = 4000  # Relay's limit on one text block
+SKIP = "Skip today"  # the pick's last button: no video today
 _AUDIO_EXT = {"audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/x-m4a": ".m4a"}
 
 
@@ -58,7 +59,11 @@ def pick_message(to: str, video_id: str, stories: list[Story]) -> dict[str, obje
         "idempotency_key": f"{video_id}-pick",
         "blocks": [
             {"type": "text", "text": "\n".join(lines)},
-            {"type": "question", "text": "Which story today?", "options": options(stories)},
+            {
+                "type": "question",
+                "text": "Which story today?",
+                "options": [*options(stories), SKIP],
+            },
         ],
     }
 

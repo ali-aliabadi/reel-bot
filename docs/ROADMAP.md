@@ -52,6 +52,7 @@ should be one small PR unless noted. Design details are in
 - [x] Morning run: 3 story candidates as a Relay `question` to ali; record the pick (who, when, which)
 - [x] Send the script to Tara through Relay and wait for her voice-note answer
 - [x] The finished MP4 to Tara and ali through Relay (she uploads by hand); failure alert with the step and the error, `reel-bot daily retry`
+- [x] Cancel a day: "Skip today" on the pick, an unanswered pick replaced the next morning, `reel-bot daily cancel` and `daily list`
 - [ ] Relay: file blocks up to 45 MB (Relay PR), `RELAY_MAX_BODY_BYTES=67108864` in Relay's `.env`, and reel-bot's `RELAY_URL=http://127.0.0.1:18080` on the VPS, so the full video fits
 - [x] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render (units in `deploy/systemd`)
 - [ ] ali: set `REEL_BOT_NARRATOR` in the VPS's `.env` and install the timers (`deploy/README.md`)

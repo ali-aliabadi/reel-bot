@@ -64,10 +64,42 @@ def steps(conn: sqlite3.Connection, video_id: str) -> dict[str, str]:
 
 
 def open_videos(conn: sqlite3.Connection) -> list[str]:
-    """Daily videos still in progress (asked about, not sent and not failed), oldest first."""
+    """Daily videos still in progress (asked about, not sent, failed or cancelled), oldest first."""
     rows = conn.execute(
         "SELECT video_id FROM daily_steps WHERE step = 'pick' AND video_id NOT IN"
-        " (SELECT video_id FROM daily_steps WHERE step IN ('sent', 'failed'))"
+        " (SELECT video_id FROM daily_steps WHERE step IN ('sent', 'failed', 'cancelled'))"
         " ORDER BY video_id"
     ).fetchall()
     return [vid for (vid,) in rows]
+
+
+def asked_at(conn: sqlite3.Connection, video_id: str, step: str) -> datetime | None:
+    """When a step's question was last sent; None when never."""
+    row = conn.execute(
+        "SELECT at FROM daily_steps WHERE video_id = ? AND step = ?", (video_id, step)
+    ).fetchone()
+    return datetime.fromisoformat(row[0]) if row else None
+
+
+def unfinished(conn: sqlite3.Connection) -> list[str]:
+    """Daily videos neither sent nor cancelled (open or failed), oldest first."""
+    rows = conn.execute(
+        "SELECT video_id FROM daily_steps WHERE step = 'pick' AND video_id NOT IN"
+        " (SELECT video_id FROM daily_steps WHERE step IN ('sent', 'cancelled'))"
+        " ORDER BY video_id"
+    ).fetchall()
+    return [vid for (vid,) in rows]
+
+
+def cancel(conn: sqlite3.Connection, video_id: str, message_id: str, at: datetime) -> None:
+    """Close a daily video for good and give its tale back, together or not at all.
+    The pick stays on the video row as the record of what was chosen."""
+    conn.execute("BEGIN")
+    try:
+        add_step(conn, video_id, "cancelled", message_id, at)
+        conn.execute("DELETE FROM tales_used WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM daily_errors WHERE video_id = ?", (video_id,))
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")

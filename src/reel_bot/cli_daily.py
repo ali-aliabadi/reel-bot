@@ -13,12 +13,14 @@ from reel_bot import (
     captions_write,
     config,
     daily,
+    daily_cancel,
     daily_run,
     guide,
     pipeline,
     relay_api,
     script_write,
     store,
+    store_daily,
     videos,
     web,
 )
@@ -37,6 +39,10 @@ def add_parser(add: Callable[..., argparse.ArgumentParser]) -> None:
     da_sub.add_parser("tick", help="move every open video on (run every few minutes)")
     re = da_sub.add_parser("retry", help="reopen a failed video")
     re.add_argument("video_id")
+    da_sub.add_parser("list", help="the daily videos not yet sent or cancelled, and where each is")
+    ca = da_sub.add_parser("cancel", help="cancel daily videos not yet sent (tells Tara if asked)")
+    ca.add_argument("video_ids", nargs="*", metavar="VIDEO_ID")
+    ca.add_argument("--all", action="store_true", help="every video not yet sent")
 
 
 def _context(
@@ -78,14 +84,8 @@ def main(
     clock: Callable[[], datetime],
     cap: float,
 ) -> int:
-    if args.action == "retry":
-        try:
-            daily.retry(conn, args.video_id)
-        except daily_run.DailyError as err:
-            print(f"daily: {err}", file=sys.stderr)
-            return EXIT_REFUSED
-        print(f"{args.video_id}\treopened; the next tick carries on")
-        return 0
+    if args.action in ("list", "retry"):
+        return _offline(args, conn)
     try:
         run = _run(conn, env, clock, cap)
     except config.ConfigError as err:
@@ -96,6 +96,8 @@ def main(
         for line in daily.tick(run):
             print(line)
         return 0
+    if args.action == "cancel":
+        return _cancel(run, args.video_ids, args.all)
     try:
         vid = daily.start(run, args.framing, args.length, random.SystemRandom())
     except (daily_run.DailyError, relay_api.RelayError, web.WebError, store.StoreError) as err:
@@ -103,3 +105,34 @@ def main(
         return EXIT_REFUSED
     print(vid or "an earlier pick is still unanswered; nothing sent")
     return 0
+
+
+def _offline(args: argparse.Namespace, conn: sqlite3.Connection) -> int:
+    """The actions that need no Relay: list and retry."""
+    if args.action == "list":
+        for line in daily.unfinished(conn):
+            print(line)
+        return 0
+    try:
+        daily.retry(conn, args.video_id)
+    except daily_run.DailyError as err:
+        print(f"daily: {err}", file=sys.stderr)
+        return EXIT_REFUSED
+    print(f"{args.video_id}\treopened; the next tick carries on")
+    return 0
+
+
+def _cancel(run: daily_run.Run, video_ids: list[str], every: bool) -> int:
+    if every == bool(video_ids):
+        print("daily: name the videos to cancel, or pass --all", file=sys.stderr)
+        return EXIT_REFUSED
+    status = 0
+    for vid in store_daily.unfinished(run.conn) if every else video_ids:
+        try:
+            daily_cancel.cancel(run, vid, "cancelled from the command line")
+        except (daily_run.DailyError, relay_api.RelayError, web.WebError, store.StoreError) as err:
+            print(f"daily: {err}", file=sys.stderr)
+            status = EXIT_REFUSED
+            continue
+        print(f"{vid}\tcancelled")
+    return status
