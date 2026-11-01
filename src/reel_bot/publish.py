@@ -75,9 +75,10 @@ def check_ready(video: Video, runs: Mapping[str, StageRun]) -> None:
         raise PublishError(f"video {video.id} has no render yet")
 
 
-def post_for(script: Script, collection: str = "") -> Post:
+def post_for(script: Script, collection: str = "", ai_voice: bool = False) -> Post:
     """The model's title and caption when it wrote them, else the story's title and
-    hook; the source, the AI disclosure and the tags are always ours."""
+    hook; the source, the AI disclosure (the voice too, when Kokoro read it) and the
+    tags are always ours."""
     title = re.sub(r"[<>]", "", script.post.title or script.title).strip()
     suffix = " #shorts"
     hashtags = dict.fromkeys([*script.post.hashtags, *COLLECTION_TAGS.get(collection, ()), *TAGS])
@@ -87,7 +88,11 @@ def post_for(script: Script, collection: str = "") -> Post:
         [
             script.post.caption or script.hook,
             f"Retold from {script.source}, {script.source_ref}. "
-            "Narrated by Tara; the pictures are made with AI.",
+            + (
+                "The voice and pictures are made with AI."
+                if ai_voice
+                else "Narrated by Tara; the pictures are made with AI."
+            ),
             " ".join("#" + t for t in hashtags),
         ]
     )

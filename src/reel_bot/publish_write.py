@@ -18,6 +18,7 @@ from typing import cast
 
 from reel_bot import (
     instagram,
+    narration,
     publish,
     script,
     script_write,
@@ -147,7 +148,9 @@ def make(
     folder = videos.video_dir(ctx.out_dir, video_id)
     raw = (folder / script_write.FILENAME).read_text(encoding="utf-8")
     picked = [s for s in store.all_stories(conn) if s.id == video.story_id]
-    post = publish.post_for(script.from_json(raw), picked[0].collection if picked else "")
+    collection = picked[0].collection if picked else ""
+    ai_voice = narration.ai_voice(store_videos.assets(conn, video_id))
+    post = publish.post_for(script.from_json(raw), collection, ai_voice)
     mp4 = folder / runs["render"].path
     done = store_videos.posts(conn, video_id)
     failures: list[str] = []

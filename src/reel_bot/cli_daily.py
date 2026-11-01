@@ -31,7 +31,7 @@ RELAY_TIMEOUT_S = 180.0  # room to upload a 45 MB video
 
 
 def add_parser(add: Callable[..., argparse.ArgumentParser]) -> None:
-    da = add("daily", help="the daily run: pick, Tara's take, video to Tara (Relay)")
+    da = add("daily", help="the daily run: pick, script, voice, pictures, video to Tara (Relay)")
     da_sub = da.add_subparsers(dest="action", required=True)
     st = da_sub.add_parser("start", help="make today's video and ask ali to pick its story")
     st.add_argument("--framing", choices=videos.FRAMINGS, required=True)
@@ -74,7 +74,8 @@ def _run(
         cfg.relay_url, cfg.relay_api_key, cfg.relay_app, web.Web(RELAY_TIMEOUT_S)
     )
     people = daily_run.People(cfg.relay_user, narrator)
-    return daily_run.Run(conn, relay, people, clock, _context(conn, env, clock, cap))
+    ctx = _context(conn, env, clock, cap)
+    return daily_run.Run(conn, relay, people, clock, ctx, config.narration(env))
 
 
 def main(

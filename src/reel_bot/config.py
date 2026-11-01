@@ -97,3 +97,15 @@ def monthly_cap(env: Mapping[str, str]) -> float:
     if not 0 <= cap < 1000:  # noqa: PLR2004 (a sanity bound, not a setting)
         raise ConfigError(["REEL_BOT_MONTHLY_CAP_USD must be a number of dollars from 0 to 999"])
     return cap
+
+
+NARRATIONS = ("kokoro", "tara")
+
+
+def narration(env: Mapping[str, str]) -> str:
+    """REEL_BOT_NARRATION: who voices the daily videos. `kokoro` (the default) reads
+    the script on this machine; `tara` asks the narrator for a voice note."""
+    value = env.get("REEL_BOT_NARRATION", "").strip().lower() or NARRATIONS[0]
+    if value not in NARRATIONS:
+        raise ConfigError(["REEL_BOT_NARRATION must be kokoro or tara"])
+    return value

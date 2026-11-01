@@ -168,6 +168,22 @@ MIGRATIONS = (
         at TEXT NOT NULL
     );
     """,
+    """
+    -- Kokoro's narration is an asset too: its source and licence, and the AI-voice
+    -- disclosure in the post comes from it.
+    CREATE TABLE assets_new (
+        video_id TEXT NOT NULL REFERENCES videos (id),
+        path TEXT NOT NULL,  -- relative to out/<video id>/
+        kind TEXT NOT NULL CHECK (kind IN ('image', 'music', 'footage', 'font', 'ai-voice')),
+        source TEXT NOT NULL,
+        licence TEXT NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (video_id, path)
+    );
+    INSERT INTO assets_new SELECT video_id, path, kind, source, licence, added_at FROM assets;
+    DROP TABLE assets;
+    ALTER TABLE assets_new RENAME TO assets;
+    """,
 )
 
 
