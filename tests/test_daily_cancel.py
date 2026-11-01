@@ -9,7 +9,7 @@ from reel_bot import daily, daily_cancel, store, store_daily, store_videos, stor
 from reel_bot.cli import main
 from reel_bot.daily_run import DailyError, Run
 from reel_bot.relay_api import SKIP, Answer
-from test_daily import Calls, Clock, FakeRelay, button, make_run, picked_and_scripted
+from test_daily import NOW, Calls, Clock, FakeRelay, button, make_run, picked_and_scripted
 
 
 @pytest.fixture
@@ -70,8 +70,10 @@ def test_cancelling_after_tara_was_asked_tells_her_and_frees_the_tale(
     video = store_videos.get_video(conn, vid)
     tale = next(s.tale for s in store.all_stories(conn) if s.id == video.story_id)
     assert tale in store.used_tales(conn)
+    store_daily.begin(conn, vid, NOW)  # a tick killed on it
 
     daily_cancel.cancel(run, vid, "test")
+    assert store_daily.begin(conn, vid, NOW) == 1  # the cancel cleared the count
     note = relay.last()
     assert note["to"] == ["tara"]
     assert note["urgency"] == "low"

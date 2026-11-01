@@ -15,7 +15,9 @@ a tick can stop anywhere and the next one carries on: it never asks or sends
 twice. An error is retried on the next tick; after MAX_ERRORS in a row the video
 stops and the picker gets an alert (until it is sent, the video stays open and
 the next tick tries again), and `retry` reopens it. Relay being unreachable while
-polling for an answer is not an error.
+polling for an answer is not an error. A tick killed mid-way (out of memory, say)
+can't count its own error, so each tick is also counted as it starts on a video
+(`daily_running`); after MAX_ERRORS that never finished, the video stops the same way.
 """
 
 import logging
@@ -92,12 +94,18 @@ def tick(run: Run) -> list[str]:
     """Move every open video on by what is ready; one status line per video."""
     lines: list[str] = []
     for vid in store_daily.open_videos(run.conn):
+        started = store_daily.begin(run.conn, vid, run.clock())
+        if started > MAX_ERRORS:
+            killed = f"the last {started - 1} ticks on it were killed before finishing"
+            lines.append(f"{vid}\t{_stop(run, vid, killed)}")
+            continue
         try:
             status = _advance(run, vid)
         except ERRORS as err:
             status = _error(run, vid, err)
         else:
             store_daily.clear_errors(run.conn, vid)
+        store_daily.end(run.conn, vid)
         lines.append(f"{vid}\t{status}")
     return lines
 
@@ -108,6 +116,7 @@ def retry(conn: sqlite3.Connection, video_id: str) -> None:
         raise DailyError(f"video {video_id} has not failed")
     store_daily.clear_step(conn, video_id, "failed")
     store_daily.clear_errors(conn, video_id)
+    store_daily.end(conn, video_id)
 
 
 def _story(conn: sqlite3.Connection, story_id: str) -> stories.Story:
@@ -182,19 +191,26 @@ def _where(conn: sqlite3.Connection, vid: str) -> str:
 def _error(run: Run, vid: str, err: Exception) -> str:
     """Count an error in a row; the next tick tries again until there are
     MAX_ERRORS, then the video stops once the picker has been alerted."""
-    now, where = run.clock(), _where(run.conn, vid)
-    count = store_daily.add_error(run.conn, vid, now)
-    extra = {"video_id": vid, "step": where, "errors": count, "detail": str(err)}
+    count = store_daily.add_error(run.conn, vid, run.clock())
     if count < MAX_ERRORS:
+        extra = {"video_id": vid, "errors": count, "detail": str(err)}
         log.warning("daily run error; the next tick tries again", extra=extra)
         return f"error {count} of {MAX_ERRORS}, trying again next tick: {err}"
-    log.error("daily run failed", extra=extra)
+    return _stop(run, vid, str(err))
+
+
+def _stop(run: Run, vid: str, detail: str) -> str:
+    """Stop a video once the picker has been alerted; until then the next tick
+    tries again."""
+    now, where = run.clock(), _where(run.conn, vid)
+    log.error("daily run failed", extra={"video_id": vid, "step": where, "detail": detail})
     try:
-        alert = alert_message(run.people.picker, vid, where, str(err), now.isoformat())
+        alert = alert_message(run.people.picker, vid, where, detail, now.isoformat())
         mid = run.relay.send(alert)
     except (RelayError, web.WebError) as alert_err:
         log.exception("alert not sent", extra={"video_id": vid, "detail": str(alert_err)})
-        return f"failed, alert not sent yet (the next tick tries again): {err}"
+        return f"failed, alert not sent yet (the next tick tries again): {detail}"
     store_daily.add_step(run.conn, vid, "failed", mid, now)
     store_daily.clear_errors(run.conn, vid)
-    return f"failed: {err}"
+    store_daily.end(run.conn, vid)
+    return f"failed: {detail}"

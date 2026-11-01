@@ -159,6 +159,15 @@ MIGRATIONS = (
     DROP TABLE daily_steps;
     ALTER TABLE daily_steps_new RENAME TO daily_steps;
     """,
+    """
+    -- Ticks that started on a daily video and didn't finish: a tick killed (out of
+    -- memory, say) never reaches the error count, so it is counted up front.
+    CREATE TABLE daily_running (
+        video_id TEXT PRIMARY KEY REFERENCES videos (id),
+        count INTEGER NOT NULL CHECK (count > 0),
+        at TEXT NOT NULL
+    );
+    """,
 )
 
 

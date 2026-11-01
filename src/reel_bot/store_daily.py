@@ -51,6 +51,22 @@ def clear_errors(conn: sqlite3.Connection, video_id: str) -> None:
     conn.execute("DELETE FROM daily_errors WHERE video_id = ?", (video_id,))
 
 
+def begin(conn: sqlite3.Connection, video_id: str, at: datetime) -> int:
+    """Count a tick starting on a video; returns how many started without ending."""
+    conn.execute(
+        "INSERT INTO daily_running (video_id, count, at) VALUES (?, 1, ?)"
+        " ON CONFLICT (video_id) DO UPDATE SET count = count + 1, at = excluded.at",
+        (video_id, at.isoformat()),
+    )
+    row = conn.execute("SELECT count FROM daily_running WHERE video_id = ?", (video_id,)).fetchone()
+    return int(row[0])
+
+
+def end(conn: sqlite3.Connection, video_id: str) -> None:
+    """A tick on a video finished (well or with an error it caught)."""
+    conn.execute("DELETE FROM daily_running WHERE video_id = ?", (video_id,))
+
+
 def clear_step(conn: sqlite3.Connection, video_id: str, step: str) -> None:
     conn.execute("DELETE FROM daily_steps WHERE video_id = ? AND step = ?", (video_id, step))
 
@@ -99,6 +115,7 @@ def cancel(conn: sqlite3.Connection, video_id: str, message_id: str, at: datetim
         add_step(conn, video_id, "cancelled", message_id, at)
         conn.execute("DELETE FROM tales_used WHERE video_id = ?", (video_id,))
         conn.execute("DELETE FROM daily_errors WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM daily_running WHERE video_id = ?", (video_id,))
     except Exception:
         conn.execute("ROLLBACK")
         raise
