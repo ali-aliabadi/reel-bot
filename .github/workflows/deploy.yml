@@ -1,0 +1,99 @@
+name: deploy
+
+# Moves the VPS checkout (/opt/reel-bot) to master once ci has passed on that
+# commit. Run it by hand (workflow_dispatch) to redeploy the current master.
+# The SSH key only runs scripts/deploy.sh on the VPS (deploy/README.md).
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  # ci finishing for an older commit (several merges in a row) must not deploy
+  # it over a newer one: only the current head of master is deployed.
+  current:
+    name: check commit is master's head
+    # Only pushes to master that passed ci; never a pull request's run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.head.outputs.deploy }}
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/master" --jq .sha)
+          if [ "$head" = "$SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping $SHA: master is now at $head, whose own run deploys it."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: update the VPS
+    needs: current
+    if: needs.current.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45 # deploy.sh may wait up to 30 minutes for a running tick
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$KNOWN_HOSTS" ] || [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ]; then
+            echo "::error::Set the VPS_HOST, VPS_USER, VPS_SSH_KEY and VPS_KNOWN_HOSTS secrets"
+            exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $VPS_HOST
+            User $VPS_USER
+            Port ${VPS_PORT:-22}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Deploy
+        run: |
+          # The key's forced command reads the SHA as SSH_ORIGINAL_COMMAND.
+          # shellcheck disable=SC2029
+          set +e
+          ssh vps "$SHA"
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then
+            # Red on purpose, so it is noticed: the code is live, the units are not.
+            echo "::error::The code is deployed, but the systemd units changed: install them by hand (deploy/README.md)."
+          fi
+          exit "$status"
+
+      - name: Remove SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

@@ -27,3 +27,27 @@ picker (`RELAY_USER`) a high-urgency Relay alert naming the video and the step; 
 cause, then `make run ARGS="daily retry VIDEO_ID"`. To drop a day instead, tap "Skip today" on the
 morning pick, or `make run ARGS="daily cancel VIDEO_ID"` (`daily list` shows the IDs). To stop: `sudo systemctl disable --now
 reel-bot-daily-start.timer reel-bot-daily-tick.timer`.
+
+## Automatic deploy after a merge
+
+`.github/workflows/deploy.yml` runs after ci passes on a push to master. It SSHes to the
+VPS with a key that can only run `scripts/deploy.sh`, passing the commit SHA. The script
+refuses anything but origin/master's head, leaves a checkout with local changes alone,
+waits for a running tick to finish, then `git merge --ff-only` and `uv sync --locked`. It
+never reads `.env` and has no sudo: when a unit in `systemd/` changed it exits 3, the run
+goes red, and you copy the units by hand as above. Redeploy by hand with "Run workflow"
+on the deploy workflow.
+
+Setup, once, as the user that owns `/opt/reel-bot` on the VPS (its `git pull` must
+already work without a prompt):
+
+```bash
+ssh-keygen -t ed25519 -N '' -C reel-bot-deploy -f reel-bot-deploy   # on your Mac
+# On the VPS, one line in that user's ~/.ssh/authorized_keys:
+#   restrict,command="/opt/reel-bot/scripts/deploy.sh" ssh-ed25519 AAAA... reel-bot-deploy
+ssh-keyscan -p PORT HOST                                             # for VPS_KNOWN_HOSTS
+```
+
+In GitHub, create a `production` environment (Settings, Environments) and set the
+secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (the private key file),
+`VPS_KNOWN_HOSTS` and, if not 22, `VPS_PORT`. Then delete the private key from your Mac.

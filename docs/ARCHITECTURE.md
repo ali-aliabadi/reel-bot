@@ -128,4 +128,5 @@ Everything runs through the Makefile, locally and in CI. Python tools are pinned
 - **File length:** `scripts/check-file-length.sh` fails on `.py` files over 300 lines (tests 500).
 - **Other checks:** `uv lock --check`, `actionlint` for workflows, `pip-audit`, `gitleaks` over the history.
 - **CI** (`ci.yml`): `make check` on every PR and push to `master`, with ffmpeg installed so the voice and render smoke tests run; actions pinned by SHA; `contents: read` only.
+- **Deploy** (`deploy.yml`): after ci passes on a push to `master`, if that commit is still master's head, SSH to the VPS with a key whose forced command is `scripts/deploy.sh` (fast-forward `/opt/reel-bot`, `uv sync --locked`; no sudo, no `.env`; changed systemd units turn the run red for a by-hand install). No actions used; secrets in the `production` environment.
 - **Dependabot:** weekly grouped updates for uv and GitHub Actions.
