@@ -34,6 +34,8 @@ make run ARGS="visuals VIDEO_ID"    # the picture prompts still missing; --add N
 make run ARGS="make VIDEO_ID --voice ~/Downloads/tara.ogg"   # finishes render.mp4
 make run ARGS="daily start --framing fable --length short"   # asks ali in Relay to pick a story
 make run ARGS="daily tick"          # pick -> ChatGPT script via Tara -> her take and pictures -> video
+make run ARGS="daily list"          # daily videos not yet sent, and where each is
+make run ARGS="daily cancel VIDEO_ID"   # or --all: cancel days that won't happen (tells Tara)
 make run ARGS="auth youtube"        # once per platform: youtube, instagram, tiktok
 make run ARGS="publish VIDEO_ID"    # posts to every signed-in platform (or add --publish to make)
 # or one stage at a time:

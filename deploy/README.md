@@ -24,5 +24,6 @@ journalctl -u reel-bot-daily-tick -n 50     # what the last ticks did
 
 An error is retried on the next tick; the third in a row stops the video and sends the
 picker (`RELAY_USER`) a high-urgency Relay alert naming the video and the step; fix the
-cause, then `make run ARGS="daily retry VIDEO_ID"`. To stop: `sudo systemctl disable --now
+cause, then `make run ARGS="daily retry VIDEO_ID"`. To drop a day instead, tap "Skip today" on the
+morning pick, or `make run ARGS="daily cancel VIDEO_ID"` (`daily list` shows the IDs). To stop: `sudo systemctl disable --now
 reel-bot-daily-start.timer reel-bot-daily-tick.timer`.

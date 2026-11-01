@@ -150,7 +150,7 @@ def test_start_asks_ali_once_until_the_pick_is_answered(
     vid = daily.start(run, "fable", "short", random.Random(1))
     assert vid is not None
     assert relay.last()["to"] == ["ali"]
-    assert len(relay.last()["blocks"][1]["options"]) == daily.CHOICES
+    assert len(relay.last()["blocks"][1]["options"]) == daily.CHOICES + 1  # and "Skip today"
     assert len(store_videos.get_video(conn, vid).story_options) == daily.CHOICES
     assert store_daily.steps(conn, vid) == {"pick": "msg_1"}
     assert daily.start(run, "fable", "short", random.Random(1)) is None

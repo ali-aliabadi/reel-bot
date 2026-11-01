@@ -34,7 +34,7 @@ def test_options_are_numbered_unique_and_within_relays_limit() -> None:
     assert len(set(labels)) == 3
 
 
-def test_pick_message_asks_with_one_button_per_story() -> None:
+def test_pick_message_asks_with_one_button_per_story_and_a_skip() -> None:
     m = relay_api.pick_message("ali", "vid_1", [FOX, LONG])
     assert m["to"] == ["ali"]
     assert m["idempotency_key"] == "vid_1-pick"
@@ -43,7 +43,7 @@ def test_pick_message_asks_with_one_button_per_story() -> None:
     assert blocks[1] == {
         "type": "question",
         "text": "Which story today?",
-        "options": relay_api.options([FOX, LONG]),
+        "options": [*relay_api.options([FOX, LONG]), relay_api.SKIP],
     }
 
 

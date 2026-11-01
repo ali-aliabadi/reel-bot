@@ -2,10 +2,12 @@
 finished video goes back to her there to upload by hand.
 
 `start` (once a morning, from a timer) makes a video and asks ali to pick one of
-three stories. `tick` (every few minutes) moves every open video on: the pick is
-recorded with who made it, then Tara is guided one step at a time (`daily_tara`):
-the script from ChatGPT, her voice note, each picture. Once the take and every
-picture are in, the video is rendered and the MP4 is sent to her and to ali.
+three stories, or "Skip today" (`daily_cancel`); a pick still unanswered from an
+earlier morning is cancelled and replaced. `tick` (every few minutes) moves every
+open video on: the pick is recorded with who made it, then Tara is guided one
+step at a time (`daily_tara`): the script from ChatGPT, her voice note, each
+picture. Once the take and every picture are in, the video is rendered and the
+MP4 is sent to her and to ali.
 
 Everything a tick needs is in the database (`daily_steps`, `stage_runs`,
 `daily_errors`) and on disk, and every Relay message has an idempotency key, so
@@ -33,9 +35,11 @@ from reel_bot import (
     visuals,
     web,
 )
+from reel_bot.daily_cancel import cancel, expire_picks
 from reel_bot.daily_run import DailyError, Run, poll
 from reel_bot.daily_tara import ask_take, collect, next_picture, script_step
 from reel_bot.relay_api import (
+    SKIP,
     Answer,
     RelayError,
     alert_message,
@@ -61,8 +65,11 @@ ERRORS = (
 
 
 def start(run: Run, framing: str, length: str, rng: random.Random) -> str | None:
-    """Make today's video and ask for the pick; None while an earlier pick is unanswered."""
+    """Make today's video and ask for the pick; None while a pick asked under
+    EXPIRE_AFTER ago is unanswered (an older one is cancelled first)."""
     conn = run.conn
+    for vid in expire_picks(run):
+        log.info("unanswered pick replaced", extra={"video_id": vid})
     for vid in store_daily.open_videos(conn):
         if store_videos.get_video(conn, vid).story_id is None:
             log.info("still waiting for a pick", extra={"video_id": vid})
@@ -123,6 +130,9 @@ def _advance(run: Run, vid: str) -> str:
         got = poll(run, sent["pick"])
         if got is None:
             return "waiting for the pick"
+        if got.text == SKIP:
+            cancel(run, vid, "skipped by the picker")
+            return "skipped today"
         story_id = _picked(run, video, got)
         store_videos.choose_story(conn, vid, story_id, got.recipient, run.clock())
         video = store_videos.get_video(conn, vid)
@@ -145,6 +155,17 @@ def _advance(run: Run, vid: str) -> str:
     mid = run.relay.send(file_message(to, vid, story.title, done.render, post.for_copying()))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
     return f"sent {done.render} (${done.cost_usd():.2f})"
+
+
+def unfinished(conn: sqlite3.Connection) -> list[str]:
+    """One line per daily video not yet sent or cancelled: ID, day, story, step."""
+    lines: list[str] = []
+    for vid in store_daily.unfinished(conn):
+        video = store_videos.get_video(conn, vid)
+        title = _story(conn, video.story_id).title if video.story_id else "-"
+        failed = " (failed)" if "failed" in store_daily.steps(conn, vid) else ""
+        lines.append(f"{vid}\t{video.created_at.date()}\t{title}\t{_where(conn, vid)}{failed}")
+    return lines
 
 
 def _where(conn: sqlite3.Connection, vid: str) -> str:
