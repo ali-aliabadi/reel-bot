@@ -1,5 +1,6 @@
 """Tara's steps in the daily run, one message at a time: the script from ChatGPT,
-the voice note, then each picture, each asked for once the one before is in.
+the voice (Kokoro reads it by default; with REEL_BOT_NARRATION=tara she sends a
+voice note), then each picture, each asked for once the one before is in.
 
 Relay locks an answer once it is read, so an answer that can't be used (a silent
 take, a file that isn't a picture) is asked for again in a new message that says
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from reel_bot import (
     guide,
+    narration,
     pipeline,
     script,
     script_write,
@@ -82,6 +84,14 @@ def ask_take(run: Run, vid: str, title: str) -> str:
     return "asked for the take"
 
 
+def narrate(run: Run, vid: str) -> None:
+    """Kokoro reads the script as the video's voice, in place of Tara's take."""
+    ctx = run.context(vid)
+    if ctx.speak is None:
+        raise DailyError("no Kokoro to read the narration")
+    narration.make(run.conn, ctx.out_dir, vid, ctx.speak(), run.clock)
+
+
 def _ask_again(run: Run, vid: str, step: str, message: dict[str, object], problem: str) -> None:
     asks = store_daily.asks(run.conn, vid, step)
     if asks >= MAX_ASKS:
@@ -137,7 +147,7 @@ def collect(run: Run, vid: str, title: str, sent: dict[str, str]) -> None:
 
 
 def next_picture(run: Run, vid: str, title: str, sent: dict[str, str]) -> int:
-    """Ask Tara for the next picture once her take and every earlier picture are
+    """Ask Tara for the next picture once the voice and every earlier picture are
     in, so she gets one step at a time. Returns its number, 0 when none was asked."""
     conn, out = run.conn, run.context(vid).out_dir
     if "voice" not in store_videos.stage_runs(conn, vid):

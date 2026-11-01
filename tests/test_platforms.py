@@ -77,6 +77,13 @@ def test_post_names_the_source_and_discloses_ai() -> None:
     assert labels[-1] == "Instagram and TikTok caption"
 
 
+def test_post_says_who_narrated() -> None:
+    assert "Narrated by Tara" in publish.post_for(make_script()).description
+    ai = publish.post_for(make_script(), ai_voice=True).description
+    assert "The voice and pictures are made with AI." in ai
+    assert "Tara" not in ai
+
+
 def test_post_uses_the_models_words_and_the_collection_tags() -> None:
     words = PostText("He called them sour", "A fox and a high vine.", ("sourgrapes", "aesop"))
     post = publish.post_for(replace(make_script(), post=words), "Aesop")

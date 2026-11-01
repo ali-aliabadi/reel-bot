@@ -1,10 +1,11 @@
 """The reading guide: the script read aloud by Kokoro at the pace the video is
 planned for, sent with the voice-note question so Tara can hear it first.
 
-It only helps Tara read; it is never in the video. Kokoro runs on this machine,
-free and offline, as `reel_bot.kokoro` in a child process at low priority,
-reading the model from `MODEL_DIR` (`make models` fills it once). `make` is
-idempotent: a guide on disk is reused.
+It only helps Tara read; it is never in the video (with REEL_BOT_NARRATION=kokoro,
+`narration` uses the same Kokoro, voice and speed as the video's voice instead).
+Kokoro runs on this machine, free and offline, as `reel_bot.kokoro` in a child
+process at low priority, reading the model from `MODEL_DIR` (`make models` fills
+it once). `make` is idempotent: a guide on disk is reused.
 """
 
 import shutil

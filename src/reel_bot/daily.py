@@ -1,13 +1,14 @@
-"""The daily run: ali picks a story in Relay, Tara reads it in Relay, and the
-finished video goes back to her there to upload by hand.
+"""The daily run: ali picks a story in Relay, Kokoro reads it (or Tara, with
+REEL_BOT_NARRATION=tara), and the finished video goes to Tara in Relay to upload
+by hand.
 
 `start` (once a morning, from a timer) makes a video and asks ali to pick one of
 three stories, or "Skip today" (`daily_cancel`); a pick still unanswered from an
 earlier morning is cancelled and replaced. `tick` (every few minutes) moves every
 open video on: the pick is recorded with who made it, then Tara is guided one
-step at a time (`daily_tara`): the script from ChatGPT, her voice note, each
-picture. Once the take and every picture are in, the video is rendered and the
-MP4 is sent to her and to ali.
+step at a time (`daily_tara`): the script from ChatGPT, then Kokoro's reading
+(or her voice note), then each picture. Once the voice and every picture are in,
+the video is rendered and the MP4 is sent to her and to ali.
 
 Everything a tick needs is in the database (`daily_steps`, `stage_runs`,
 `daily_errors`) and on disk, and every Relay message has an idempotency key, so
@@ -25,6 +26,8 @@ import random
 import sqlite3
 
 from reel_bot import (
+    guide,
+    narration,
     pipeline,
     publish,
     script,
@@ -39,7 +42,7 @@ from reel_bot import (
 )
 from reel_bot.daily_cancel import cancel, expire_picks
 from reel_bot.daily_run import DailyError, Run, poll
-from reel_bot.daily_tara import ask_take, collect, next_picture, script_step
+from reel_bot.daily_tara import ask_take, collect, narrate, next_picture, script_step
 from reel_bot.relay_api import (
     SKIP,
     Answer,
@@ -57,6 +60,7 @@ MAX_ERRORS = 3  # errors in a row (one per tick) before a video stops and alerts
 ERRORS = (
     *pipeline.ERRORS,
     DailyError,
+    guide.GuideError,
     OSError,
     RelayError,
     store.StoreError,
@@ -150,9 +154,8 @@ def _advance(run: Run, vid: str) -> str:
         waiting = script_step(run, video, story, sent)
         if waiting:
             return waiting
-    if "take" not in sent:
-        pipeline.advance(conn, vid, None, ctx)  # read-this.txt from the script
-        return ask_take(run, vid, story.title)
+    if started := _start_voice(run, vid, story.title, sent):
+        return started
     collect(run, vid, story.title, sent)
     done = pipeline.advance(conn, vid, None, ctx)
     if done.render is None:
@@ -160,10 +163,37 @@ def _advance(run: Run, vid: str) -> str:
         return f"asked for picture {asked}" if asked else f"waiting for {done.waiting}"
     to = [run.people.narrator, run.people.picker]
     raw = (videos.video_dir(ctx.out_dir, vid) / script_write.FILENAME).read_text("utf-8")
-    post = publish.post_for(script.from_json(raw), story.collection)
-    mid = run.relay.send(file_message(to, vid, story.title, done.render, post.for_copying()))
+    ai_voice = narration.ai_voice(store_videos.assets(conn, vid))
+    post = publish.post_for(script.from_json(raw), story.collection, ai_voice)
+    mid = run.relay.send(file_message(to, vid, story.title, done.render, _copy(post, ai_voice)))
     store_daily.add_step(conn, vid, "sent", mid, run.clock())
     return f"sent {done.render} (${done.cost_usd():.2f})"
+
+
+AI_LABEL = (
+    "The voice is AI: turn on the AI label when you upload",
+    "YouTube: Altered or synthetic content, Yes. Instagram: AI info. TikTok: AI-generated content.",
+)
+
+
+def _copy(post: publish.Post, ai_voice: bool) -> list[tuple[str, str]]:
+    """The post text to copy, after the AI-label reminder when Kokoro read it."""
+    return [*([AI_LABEL] if ai_voice else []), *post.for_copying()]
+
+
+def _start_voice(run: Run, vid: str, title: str, sent: dict[str, str]) -> str:
+    """Kokoro reads the script, or Tara is asked for her take; "" once that is done."""
+    conn = run.conn
+    if run.narration == narration.KOKORO:
+        if "voice" in store_videos.stage_runs(conn, vid):
+            return ""
+        pipeline.advance(conn, vid, None, run.context(vid))  # read-this.txt from the script
+        narrate(run, vid)
+        return "kokoro read the script"
+    if "take" in sent:
+        return ""
+    pipeline.advance(conn, vid, None, run.context(vid))
+    return ask_take(run, vid, title)
 
 
 def unfinished(conn: sqlite3.Connection) -> list[str]:
@@ -181,8 +211,10 @@ def _where(conn: sqlite3.Connection, vid: str) -> str:
     sent, runs = store_daily.steps(conn, vid), store_videos.stage_runs(conn, vid)
     if store_videos.get_video(conn, vid).story_id is None:
         return "story pick"
-    if "script" not in runs or "take" not in sent:
+    if "script" not in runs:
         return "script"
+    if "voice" not in runs and "take" not in sent:
+        return "the voice"
     if "voice" in runs and "visuals" in runs:
         return "render and send"
     return "the take and pictures"

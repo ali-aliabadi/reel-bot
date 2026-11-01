@@ -52,7 +52,7 @@ class Asset:
     """A file a video uses and where it came from (the licensed-inputs rule)."""
 
     path: str  # relative to the video's directory
-    kind: str  # image, music, footage or font
+    kind: str  # image, music, footage, font or ai-voice
     source: str
     licence: str
     added_at: datetime

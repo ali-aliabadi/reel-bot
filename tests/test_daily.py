@@ -113,7 +113,7 @@ def make_run(conn: sqlite3.Connection, out: Path, relay: FakeRelay, calls: Calls
     def context(vid: str) -> pipeline.Context:
         return pipeline.Context(out, clock, lambda: calls.claude, lambda: calls.transcribe)
 
-    return daily_run.Run(conn, relay, daily_run.People("ali", "tara"), clock, context)
+    return daily_run.Run(conn, relay, daily_run.People("ali", "tara"), clock, context, "tara")
 
 
 def button(relay: FakeRelay, n: int = 1, choice: int = 0) -> Answer:

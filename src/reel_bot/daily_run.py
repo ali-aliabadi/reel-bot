@@ -37,6 +37,7 @@ class Run:
     people: People
     clock: Callable[[], datetime]
     context: Callable[[str], pipeline.Context]  # a video's stage context (its budget)
+    narration: str  # config.NARRATIONS: kokoro reads the script, or tara records it
 
 
 def poll(run: Run, message_id: str) -> Answer | None:
