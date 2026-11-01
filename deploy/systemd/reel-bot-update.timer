@@ -1,0 +1,10 @@
+[Unit]
+Description=reel-bot: look for a new master every 5 minutes
+
+[Timer]
+# Between the daily ticks (*:0/5), so an update rarely waits on one.
+OnCalendar=*:2/5
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

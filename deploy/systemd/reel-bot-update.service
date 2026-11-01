@@ -1,0 +1,14 @@
+# Deploys the latest master (deploy/update.sh): git fast-forward, uv sync, units reloaded.
+[Unit]
+Description=reel-bot: deploy the latest master
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/reel-bot
+Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/reel-bot/deploy/update.sh
+TimeoutStartSec=10min
+Nice=10
+MemoryMax=500M

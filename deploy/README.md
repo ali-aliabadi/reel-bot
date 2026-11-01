@@ -15,9 +15,9 @@ and `RELAY_URL=http://127.0.0.1:18080` in reel-bot's `.env` so the videos skip n
 Cloudflare.
 
 ```bash
-sudo cp /opt/reel-bot/deploy/systemd/reel-bot-daily-* /etc/systemd/system/
+sudo cp /opt/reel-bot/deploy/systemd/reel-bot-* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now reel-bot-daily-tick.timer reel-bot-daily-start.timer
+sudo systemctl enable --now reel-bot-daily-tick.timer reel-bot-daily-start.timer reel-bot-update.timer
 systemctl list-timers 'reel-bot-*'
 journalctl -u reel-bot-daily-tick -n 50     # what the last ticks did
 ```
@@ -27,3 +27,11 @@ picker (`RELAY_USER`) a high-urgency Relay alert naming the video and the step; 
 cause, then `make run ARGS="daily retry VIDEO_ID"`. To drop a day instead, tap "Skip today" on the
 morning pick, or `make run ARGS="daily cancel VIDEO_ID"` (`daily list` shows the IDs). To stop: `sudo systemctl disable --now
 reel-bot-daily-start.timer reel-bot-daily-tick.timer`.
+
+## Updates
+
+`reel-bot-update.timer` runs `deploy/update.sh` every 5 minutes: when `origin/master`
+has moved it fast-forwards the checkout, runs `uv sync --locked` and copies the units in
+`systemd/` to `/etc/systemd/system/` (a new timer still needs one `systemctl enable --now`).
+It waits while a daily run is active. A local change or commit on the VPS makes it fail
+rather than overwrite it: `journalctl -u reel-bot-update -n 20`.

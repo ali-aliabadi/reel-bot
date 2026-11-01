@@ -70,5 +70,5 @@ should be one small PR unless noted. Design details are in
 
 - [x] `publish` stage: YouTube, Instagram Reels and TikTok uploads, gated on a recorded pick (also in the database), AI label set, one post per platform, `reel-bot auth` and `reel-bot publish`
 - [ ] Public on YouTube and TikTok once each audit passes (`TIKTOK_PRIVACY=PUBLIC_TO_EVERYONE`)
-- [ ] Run on the VPS with a deploy workflow like relay's
+- [x] Deploy on the VPS after every merge: `reel-bot-update.timer` fast-forwards `/opt/reel-bot` to master and runs `uv sync` (pull, so no deploy key or GitHub secret)
 - [ ] A/B hooks

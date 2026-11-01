@@ -25,11 +25,12 @@ for the video log and metrics · `ffmpeg`/`ffprobe` as external binaries for ren
 every message to ali · GitHub Actions for CI.
 
 It runs on ali's VPS (Ubuntu 22.04, next to Relay) from a git checkout in
-`/opt/reel-bot`, updated by hand with `git pull`.
+`/opt/reel-bot`, which `reel-bot-update.timer` fast-forwards to master within 5 minutes
+of a merge (`deploy/update.sh`).
 
 Posting (`reel-bot publish`) is built, but YouTube locks API uploads as private and
 TikTok posts only privately until each platform audits the app; Instagram posts
-publicly now. Not yet: Docker or a deploy pipeline.
+publicly now. Not yet: Docker.
 
 ## Layout
 
@@ -39,7 +40,7 @@ src/reel_bot/data/    stories.json, the story catalog
 tests/                pytest tests, test_*.py next to what they cover by name
 scripts/              check-file-length.sh, install-gitleaks.sh and other repo checks
 docs/                 ARCHITECTURE.md (design), ROADMAP.md (what to build next)
-deploy/               systemd timers for the daily run on the VPS, and how to install them
+deploy/               systemd timers for the daily run and the auto-update on the VPS, and how to install them
 .github/              workflows/ci.yml, dependabot.yml, pull_request_template.md
 .claude/skills/       project skills (reel-bot-review)
 skills/relay-notify/  copied unchanged from ali-aliabadi/relay; how reel-bot talks to ali
