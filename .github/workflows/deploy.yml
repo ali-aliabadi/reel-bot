@@ -82,9 +82,9 @@ jobs:
 
       - name: Deploy
         run: |
+          set +e
           # The key's forced command reads the SHA as SSH_ORIGINAL_COMMAND.
           # shellcheck disable=SC2029
-          set +e
           ssh vps "$SHA"
           status=$?
           set -e
