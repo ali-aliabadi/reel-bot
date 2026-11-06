@@ -15,6 +15,7 @@ import pytest
 from reel_bot import (
     captions,
     captions_write,
+    cli_gemini_probe,
     flux,
     guide,
     relay_api,
@@ -116,3 +117,18 @@ def test_workers_ai_calls_time_out_and_retry_a_bounded_number_of_times(slow_api:
     with pytest.raises(web.WebError, match="workers ai failed"):
         drafter.draw("A fox.")
     assert slept == [2.0, 4.0]
+
+
+def test_gemini_probe_times_out_without_retrying(
+    slow_api: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli_gemini_probe, "API", slow_api)
+    slept: list[float] = []
+    with pytest.raises(web.WebError, match="gemini image probe failed"):
+        cli_gemini_probe.generate(
+            "fake-key",
+            cli_gemini_probe.MODELS[0],
+            "A fox.",
+            web.Web(timeout_s=0.2, sleep=slept.append),
+        )
+    assert slept == []

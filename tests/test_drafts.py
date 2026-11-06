@@ -13,8 +13,10 @@ from reel_bot import (
     config,
     daily,
     daily_run,
+    daily_tara,
     drafts,
     flux,
+    script,
     store,
     store_daily,
     store_videos,
@@ -72,6 +74,7 @@ def test_tara_gets_the_draft_with_its_prompt_and_can_use_it(
     image, text, question = relay.last()["blocks"]
     assert base64.b64decode(image["base64"]) == JPEG
     assert image["content_type"] == "image/jpeg"
+    assert text["type"] == "code"
     assert "A fox, scene 0." in text["text"] == painter.prompts[0]
     assert question["options"] == [drafts.USE, drafts.OWN]
     assert relay.last()["idempotency_key"] == f"{vid}-picture-1"
@@ -201,3 +204,22 @@ def test_a_typed_answer_to_the_draft_is_asked_for_again(
     relay.answer(4, Answer("tara", "hmm", None, ""))
     daily.tick(run)
     assert "the answer has no picture" in relay.last()["blocks"][0]["text"]
+
+
+def test_daily_can_ask_for_all_fourteen_scene_pictures(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    run, relay, vid = at_picture_one(conn, tmp_path, Painter())
+    path = tmp_path / "out" / vid / "script.json"
+    old = script.from_json(path.read_text())
+    path.write_text(script.to_json(replace(old, paragraphs=old.paragraphs[:1] * 14)))
+    for number in range(1, 14):
+        # Use the draft already offered, then ask for the next illustrated beat.
+        sent = store_daily.steps(conn, vid)
+        relay.answer(
+            int(sent[f"picture-{number}"].split("_")[1]), Answer("tara", drafts.USE, None, "")
+        )
+        daily_tara.collect(run, vid, "The fox", sent)
+        assert daily_tara.next_picture(run, vid, "The fox", sent) == number + 1
+    assert "picture-14" in store_daily.steps(conn, vid)
+    assert relay.last()["title"].startswith("Picture 14 of 14")

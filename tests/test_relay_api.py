@@ -67,9 +67,9 @@ def test_picture_message_asks_for_one_picture_and_refuses_an_overlong_prompt() -
     assert m["title"] == f"Picture 2 of 2: {FOX.title}"
     assert m["idempotency_key"] == "vid_1-picture-2"
     text, question = cast(list[Any], m["blocks"])
-    assert text == {"type": "text", "text": "A vine."}
+    assert text == {"type": "code", "text": "A vine."}
     assert question["reply"] == "image"
-    assert "ChatGPT" in question["text"]
+    assert "Gemini AI Studio" in question["text"]
     with pytest.raises(RelayError, match="picture 1's prompt"):
         relay_api.picture_message("tara", "vid_1", FOX.title, ["x" * 4001], 1)
 

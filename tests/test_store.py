@@ -61,3 +61,40 @@ def test_offered_tales(conn: sqlite3.Connection) -> None:
         (NOW.isoformat(), '["panchatantra-lion", "gone"]'),
     )
     assert store.offered_tales(conn) == {"lion-and-hare"}
+
+
+def test_upgrade_preserves_daily_answers_and_accepts_fourteen_pictures(tmp_path: Path) -> None:
+    c = sqlite3.connect(tmp_path / "old.db", isolation_level=None)
+    c.execute("PRAGMA foreign_keys = ON")
+    for version, sql in enumerate(store.MIGRATIONS[:-1], 1):
+        c.executescript(f"BEGIN; {sql}; PRAGMA user_version = {version}; COMMIT;")
+    c.execute(
+        "INSERT INTO videos (id, created_at, framing, length) VALUES (?, ?, ?, ?)",
+        ("vid_1", NOW.isoformat(), "fable", "long"),
+    )
+    c.execute(
+        "INSERT INTO daily_steps VALUES (?, ?, ?, ?, ?)",
+        ("vid_1", "picture-6", "msg_saved", NOW.isoformat(), 2),
+    )
+    before = c.execute("SELECT * FROM daily_steps").fetchall()
+    with pytest.raises(sqlite3.IntegrityError):
+        c.execute(
+            "INSERT INTO daily_steps VALUES (?, ?, ?, ?, ?)",
+            ("vid_1", "picture-7", "msg_7", NOW.isoformat(), 1),
+        )
+    store.migrate(c)
+    store.migrate(c)
+    assert c.execute("SELECT * FROM daily_steps").fetchall() == before
+    for n in range(7, 15):
+        c.execute(
+            "INSERT INTO daily_steps VALUES (?, ?, ?, ?, ?)",
+            ("vid_1", f"picture-{n}", f"msg_{n}", NOW.isoformat(), 1),
+        )
+    for bad in ("picture-0", "picture-15", "picture-100", "picture-01", "script-4"):
+        with pytest.raises(sqlite3.IntegrityError):
+            c.execute(
+                "INSERT INTO daily_steps VALUES (?, ?, ?, ?, ?)",
+                ("vid_1", bad, "msg_bad", NOW.isoformat(), 1),
+            )
+    assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert c.execute("SELECT count(*) FROM daily_steps").fetchone() == (9,)
