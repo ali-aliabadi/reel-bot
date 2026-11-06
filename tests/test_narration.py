@@ -121,7 +121,7 @@ def test_without_kokoro_the_video_errors_instead_of_asking_tara(
     run = kokoro_run(conn, tmp_path, relay, None)
     vid = scripted(run, relay)
     (line,) = daily.tick(run)
-    assert line == f"{vid}\terror 1 of 3, trying again next tick: no Kokoro to read the narration"
+    assert line == f"{vid}\terror 1 of 10, trying again next tick: no Kokoro to read the narration"
     assert len(relay.sent) == 2  # the pick and the script: Tara is never asked for a take
     assert "take" not in store_daily.steps(conn, vid)
     assert any(f"{vid}\t" in u and "the voice" in u for u in daily.unfinished(conn))
@@ -137,7 +137,7 @@ def test_a_kokoro_failure_is_retried_on_the_next_tick(
     run = kokoro_run(conn, tmp_path, relay, broken)
     vid = scripted(run, relay)
     (line,) = daily.tick(run)
-    assert line == f"{vid}\terror 1 of 3, trying again next tick: Kokoro exited 1: out of memory"
+    assert line == f"{vid}\terror 1 of 10, trying again next tick: Kokoro exited 1: out of memory"
     assert not (tmp_path / "out" / vid / narration.FILENAME).exists()
 
 

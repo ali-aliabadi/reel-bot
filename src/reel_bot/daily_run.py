@@ -38,6 +38,7 @@ class Run:
     clock: Callable[[], datetime]
     context: Callable[[str], pipeline.Context]  # a video's stage context (its budget)
     narration: str  # config.NARRATIONS: kokoro reads the script, or tara records it
+    draw: Callable[[str], bytes] | None = None  # draws draft pictures (flux); None: Tara does
 
 
 def poll(run: Run, message_id: str) -> Answer | None:

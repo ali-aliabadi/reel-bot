@@ -267,8 +267,10 @@ def test_a_script_with_problems_goes_back_to_chatgpt_twice_then_stops(
     relay.answer(3, pasted(SCRIPT.replace("word0", "word0 extra extra")))
     assert daily.tick(run) == [f"{vid}\tasked for fix 2 of the script"]
     relay.answer(4, pasted(json.dumps({"hook": "", "paragraphs": [], "lesson": ""})))
-    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 3, trying again next tick: ChatGPT's")
-    assert ticks(run, 2).startswith(f"{vid}\tfailed: ChatGPT's script still has problems: it has 0")
+    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 10, trying again next tick: ChatGPT's")
+    assert ticks(run, daily.MAX_ERRORS - 1).startswith(
+        f"{vid}\tfailed: ChatGPT's script still has problems: it has 0"
+    )
     assert {"label": "Step", "value": "script"} in relay.last()["blocks"][0]["items"]
     assert "script" not in store_videos.stage_runs(conn, vid)
 
@@ -292,11 +294,14 @@ def test_errors_are_retried_then_stop_the_video_with_an_alert_and_can_be_retried
     vid = str(daily.start(run, "fable", "short", random.Random(1)))
     relay.answer(1, Answer("ali", "4. Something else", None, ""))
     assert daily.tick(run) == [
-        f"{vid}\terror 1 of 3, trying again next tick: the pick is not one of the offered stories"
+        f"{vid}\terror 1 of 10, trying again next tick: the pick is not one of the offered stories"
     ]
-    assert ticks(run, 1).startswith(f"{vid}\terror 2 of 3")
-    assert len(relay.sent) == 1  # nobody is bothered before the third error in a row
-    assert ticks(run, 1) == f"{vid}\tfailed: the pick is not one of the offered stories"
+    assert ticks(run, 1).startswith(f"{vid}\terror 2 of 10")
+    assert len(relay.sent) == 1  # nobody is bothered before the last error in a row
+    assert (
+        ticks(run, daily.MAX_ERRORS - 2)
+        == f"{vid}\tfailed: the pick is not one of the offered stories"
+    )
     alert = relay.last()
     assert alert["urgency"] == "high"
     assert alert["to"] == ["ali"]
@@ -305,7 +310,7 @@ def test_errors_are_retried_then_stop_the_video_with_an_alert_and_can_be_retried
 
     daily.retry(conn, vid)
     relay.answer(1, Answer("ali", "4. Something else", None, ""))
-    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 3")  # retry starts the count again
+    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 10")  # retry starts the count again
     relay.answer(1, button(relay))
     assert daily.tick(run) == [f"{vid}\tasked for the script"]
     with pytest.raises(daily_run.DailyError, match="has not failed"):
@@ -324,7 +329,7 @@ def test_ticks_killed_before_finishing_stop_the_video_with_an_alert(
     assert ticks(run, 1).startswith(f"{vid}\tfailed, alert not sent yet")
     relay.refuse = False
     assert daily.tick(run) == [
-        f"{vid}\tfailed: the last 4 ticks on it were killed before finishing"
+        f"{vid}\tfailed: the last {daily.MAX_ERRORS + 1} ticks on it were killed before finishing"
     ]
     assert relay.last()["urgency"] == "high"
     assert daily.tick(run) == []
@@ -340,7 +345,7 @@ def test_a_passing_error_heals_on_the_next_tick(conn: sqlite3.Connection, tmp_pa
     daily.tick(run)
     voiced(conn, vid)
     relay.refuse = True
-    assert ticks(run, 2).startswith(f"{vid}\terror 2 of 3, trying again next tick: refused")
+    assert ticks(run, 2).startswith(f"{vid}\terror 2 of 10, trying again next tick: refused")
     relay.refuse = False
     assert daily.tick(run) == [f"{vid}\tasked for picture 1"]
     assert store_daily.add_error(conn, vid, NOW) == 1  # a good tick cleared the count
@@ -357,7 +362,9 @@ def test_a_video_stays_open_until_its_alert_is_sent(
     assert ticks(run, 5) == f"{vid}\twaiting for the pick"
     relay.down = False
     relay.limit = 1  # the pick went out; the alert is refused
-    assert ticks(run, 3).startswith(f"{vid}\tfailed, alert not sent yet (the next tick tries")
+    assert ticks(run, daily.MAX_ERRORS).startswith(
+        f"{vid}\tfailed, alert not sent yet (the next tick tries"
+    )
     assert "failed" not in store_daily.steps(conn, vid)
     relay.limit = 1000
     assert ticks(run, 1).startswith(f"{vid}\tfailed: the pick")
@@ -386,7 +393,7 @@ def test_a_take_without_audio_is_asked_for_again_three_times_at_most(
     daily.tick(run)
     assert store_daily.asks(conn, vid, "take") == daily_tara.MAX_ASKS
     relay.answer(5, Answer("tara", "", None, ""))
-    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 3, trying again next tick: take still")
+    assert ticks(run, 1).startswith(f"{vid}\terror 1 of 10, trying again next tick: take still")
     assert len(relay.sent) == 5
 
 

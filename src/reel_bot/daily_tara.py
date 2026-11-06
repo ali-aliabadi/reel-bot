@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 
 from reel_bot import (
+    drafts,
+    flux,
     guide,
     narration,
     pipeline,
@@ -101,11 +103,24 @@ def _ask_again(run: Run, vid: str, step: str, message: dict[str, object], proble
     log.info("asked again", extra={"video_id": vid, "step": step, "message_id": mid})
 
 
+def _chosen(run: Run, vid: str, number: int, got: Answer) -> visuals_write.Made | str:
+    """The picture in an answer: Tara's own, or the draft she chose; else why not."""
+    if got.image is not None:
+        return visuals_write.Made(got.image, got.recipient, run.clock())
+    if got.text != drafts.USE:
+        return "the answer has no picture"
+    draft = drafts.found(videos.video_dir(run.context(vid).out_dir, vid), number)
+    if draft is None:
+        return "reel-bot's draft of it is gone"
+    source = f"drawn by FLUX.1 schnell, chosen by {got.recipient}"
+    return visuals_write.Made(draft.read_bytes(), got.recipient, run.clock(), source, flux.LICENCE)
+
+
 def _save_picture(run: Run, vid: str, number: int, got: Answer) -> str:
     """Save an answered picture; returns why it can't be used, "" when saved."""
-    if got.image is None:
-        return "the answer has no picture"
-    made = visuals_write.Made(got.image, got.recipient, run.clock())
+    made = _chosen(run, vid, number, got)
+    if isinstance(made, str):
+        return made
     try:
         visuals_write.add(run.conn, run.context(vid).out_dir, vid, number, made)
     except visuals.VisualsError as err:
@@ -136,9 +151,13 @@ def collect(run: Run, vid: str, title: str, sent: dict[str, str]) -> None:
         step = f"picture-{n}"
         if step not in sent or visuals_write.found(folder, pic) is not None:
             continue
-        if (got := poll(run, sent[step])) and (problem := _save_picture(run, vid, n, got)):
-            prompts = [p.prompt for p in pictures]
-            msg = picture_message(run.people.narrator, vid, title, prompts, n)
+        if not (got := poll(run, sent[step])):
+            continue
+        msg = picture_message(run.people.narrator, vid, title, [p.prompt for p in pictures], n)
+        if got.image is None and got.text == drafts.OWN:  # the usual question, no draft
+            own = {**msg, "idempotency_key": f"{msg['idempotency_key']}-own"}
+            store_daily.reask(conn, vid, step, run.relay.send(own), run.clock())
+        elif problem := _save_picture(run, vid, n, got):
             _ask_again(run, vid, step, msg, problem)
     if "voice" in store_videos.stage_runs(conn, vid) or not (got := poll(run, sent["take"])):
         return
@@ -156,6 +175,8 @@ def next_picture(run: Run, vid: str, title: str, sent: dict[str, str]) -> int:
     for n, pic in enumerate(pictures, 1):
         if f"picture-{n}" not in sent:
             msg = picture_message(run.people.narrator, vid, title, [p.prompt for p in pictures], n)
+            if draft := drafts.make(folder, n, pic.prompt, run.draw):
+                msg = drafts.message(msg, draft)
             store_daily.add_step(conn, vid, f"picture-{n}", run.relay.send(msg), run.clock())
             return n
         if visuals_write.found(folder, pic) is None:
