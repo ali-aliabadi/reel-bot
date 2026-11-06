@@ -66,6 +66,8 @@ should be one small PR unless noted. Design details are in
 
 - [x] Copyable picture prompts and a standalone, billing-disabled Gemini image API probe (daily provider unchanged)
 
+- [x] Migrate daily step constraints to support all 14 scenes and verify the complete picture-request flow
+
 ## Phase 4: metrics and decisions
 
 - [ ] `metrics` table; nightly YouTube Analytics pull for videos at 72 hours

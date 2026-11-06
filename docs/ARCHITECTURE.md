@@ -156,3 +156,9 @@ with a 90-second timeout, validates image bytes, and refuses existing outputs.
 Google's current image API pricing has no free tier; a live access test requires
 a user-provided key from a project without billing. API automation is not enabled
 by this experiment.
+
+Schema migration 13 expands daily picture steps from 1-6 to 1-14, preserving
+message IDs, timestamps and retry counts. This is required for the expanded
+story briefs: otherwise a picture-7 Relay message can be sent but its database
+record fails, crashing the worker. Regression checks cover both an upgrade from
+the previous schema and the daily picture flow through picture 14.
