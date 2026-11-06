@@ -49,3 +49,8 @@ make check                 # before every commit
 
 Branch from `master`, open a PR, keep it to one roadmap item, and run `make check`.
 Agents: read [CLAUDE.md](CLAUDE.md) first.
+
+New story briefs request a punch-line ending and 6-9 illustrated scenes for
+short videos or 10-14 for long ones (up to 90 seconds). Kokoro reads faster,
+with shorter pauses; ffmpeg adds gentle zooms and short dissolves locally.
+Already cached videos keep their existing script, audio and render.

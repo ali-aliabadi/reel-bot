@@ -2,8 +2,8 @@
 
 Pictures change at the pauses between parts: each cut sits halfway through the
 silence between one part's last word and the next part's first. The hook plays
-over the first picture and the lesson over the last. Each picture pans slowly
-(alternately down and up) across a frame scaled a little larger than 1080x1920.
+over the first picture and the lesson over the last. Each picture zooms gently
+and pans across an oversized frame; short dissolves straddle the scene boundaries.
 Captions are an ASS file burned in by libass. `render_write` runs ffmpeg.
 """
 
@@ -19,10 +19,11 @@ OVERSCAN = 1.1  # the picture is scaled this much larger than the frame to leave
 FONT = "DejaVu Sans"  # Ubuntu's fonts-dejavu-core; free licence, commercial use allowed
 FONT_SIZE = 84
 CAPTION_MARGIN = 420  # px from the bottom, above the Shorts buttons and title
-CRF, PRESET, THREADS = 20, "medium", 2  # two threads leave a core for Relay on the VPS
+CRF, PRESET, THREADS = 20, "veryfast", 2  # two threads leave a core for Relay on the VPS
 # x264 looks 10 frames ahead instead of 40: about 200 MB less at 1080x1920 (636 -> 438 MB on
 # the VPS), which the tick's 700 MB cap needs; slow pans over still pictures lose nothing.
 LOOKAHEAD = 10
+DISSOLVE_S = 0.35
 
 
 class RenderError(Exception):
@@ -88,26 +89,45 @@ def ass(cues: Sequence[Cue]) -> str:
     return head + "\n".join(lines) + "\n"
 
 
-def _shot_filter(i: int, shot: Shot) -> str:
+def _shot_filter(i: int, seconds: float) -> str:
     w, h = round(WIDTH * OVERSCAN / 2) * 2, round(HEIGHT * OVERSCAN / 2) * 2
-    travel = f"(ih-{HEIGHT})*min(t/{shot.seconds},1)"
-    y = travel if i % 2 == 0 else f"(ih-{HEIGHT})-{travel}"
+    progress = f"min(on/{max(1, round(seconds * FPS) - 1)},1)"
+    zoom = f"1+0.06*{progress}" if i % 2 == 0 else f"1.06-0.06*{progress}"
+    y = f"(ih-ih/zoom)*{progress}"
     return (
-        f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-        f"crop={WIDTH}:{HEIGHT}:(iw-{WIDTH})/2:'{y}',setsar=1,fps={FPS},format=yuv420p[v{i}]"
+        f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
+        f"zoompan=z='{zoom}':x='(iw-iw/zoom)/2':y='{y}':"
+        f"d=1:s={WIDTH}x{HEIGHT}:fps={FPS},"
+        f"trim=duration={seconds:.6f},settb=AVTB,setpts=PTS-STARTPTS,"
+        f"setsar=1,format=yuv420p[v{i}]"
     )
 
 
 def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str) -> list[str]:
-    """ffmpeg arguments, run with the video's directory as the working directory so
-    every file name is relative (and needs no filter escaping)."""
-    args = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
-    for s in shots:
-        args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{s.seconds:.3f}", "-i", s.picture]
+    """Motion and overlapping dissolves without shortening the narration timeline."""
+    args = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+            "-filter_complex_threads", "1"]  # fmt: skip
+    # Half a dissolve on either side keeps each caption-aligned cut at its midpoint.
+    fade = min(DISSOLVE_S, min(s.seconds for s in shots) / 2)
+    durations = [
+        s.seconds + (fade / 2 if i else 0) + (fade / 2 if i < len(shots) - 1 else 0)
+        for i, s in enumerate(shots)
+    ]
+    for s, seconds in zip(shots, durations, strict=True):
+        args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{seconds:.6f}",
+                 "-threads", "1", "-i", s.picture]  # fmt: skip
     args += ["-i", voice]
-    graph = [_shot_filter(i, s) for i, s in enumerate(shots)]
-    joined = "".join(f"[v{i}]" for i in range(len(shots)))
-    graph.append(f"{joined}concat=n={len(shots)}:v=1:a=0,ass={captions_file}[out]")
+    graph = [_shot_filter(i, seconds) for i, seconds in enumerate(durations)]
+    previous = "v0"
+    elapsed = durations[0]
+    for i in range(1, len(shots)):
+        graph.append(
+            f"[{previous}][v{i}]xfade=transition=fade:duration={fade:.6f}:"
+            f"offset={elapsed - fade:.6f}[mix{i}]"
+        )
+        previous = f"mix{i}"
+        elapsed += durations[i] - fade
+    graph.append(f"[{previous}]ass={captions_file},format=yuv420p[out]")
     args += ["-filter_complex", ";".join(graph), "-map", "[out]", "-map", f"{len(shots)}:a"]
     args += ["-c:v", "libx264", "-preset", PRESET, "-crf", str(CRF), "-threads", str(THREADS)]
     args += ["-x264-params", f"rc-lookahead={LOOKAHEAD}"]

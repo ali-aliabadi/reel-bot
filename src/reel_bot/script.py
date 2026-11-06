@@ -23,7 +23,8 @@ WORDS = {"short": (95, 120), "long": (150, 200)}
 WORDS_ACCEPTED = {"short": (95, 150), "long": (150, 200)}
 _CURLY = str.maketrans("“”", '""')
 LESSON = {"fable": False, "lesson": True}
-PARAGRAPHS = (3, 6)
+PARAGRAPHS = (3, 14)  # accept older scripts too
+SCENES = {"short": (6, 9), "long": (10, 14)}
 HOOK_MAX_WORDS = 14
 POST_TITLE_MAX, POST_CAPTION_MAX, HASHTAGS_MAX = 60, 300, 3
 _HASHTAG = re.compile(r"^[a-z][a-z0-9]{1,29}$")
@@ -115,6 +116,13 @@ a single scene that one picture can show. Stay true to the tale as the named
 source tells it: keep its characters, events and ending. Write your own words;
 never quote a modern translation.
 
+Build toward a punch line: the final scene must pay off the hook with the
+source's reversal, consequence, or sharp character reply. Make the last spoken
+sentence short and memorable. Do not end on setup, a vague summary, or a
+question to the viewer. Preserve the original outcome; never invent a twist.
+If a work lesson is requested, make it the final sting rather than repeating
+the moral. Silently check that the hook's promise is resolved before answering.
+
 For each paragraph, describe its picture in one sentence: who is in it, where,
 doing what. No words, letters or signs in pictures. Never describe real people.
 
@@ -139,7 +147,10 @@ def prompt(story: Story, video: Video) -> str:
         f"Tale: {story.title} ({story.collection}).\n"
         f"Retell it from: {story.source}, {story.source_ref}.\n"
         f"Length: {low} to {high} spoken words in total, hook and lesson included.\n"
-        f"Paragraphs: {PARAGRAPHS[0]} to {PARAGRAPHS[1]}. "
+        f"Paragraphs: {SCENES[video.length][0]} to {SCENES[video.length][1]}. "
+        "Each is a distinct visual beat, roughly 12-20 spoken words. "
+        "Split action into setup, reaction and consequence; vary wide shots and close-ups. "
+        "Keep characters and clothing consistent across picture prompts. "
         f"Hook: at most {HOOK_MAX_WORDS} words.\n"
         f"{lesson}"
     )

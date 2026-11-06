@@ -153,3 +153,14 @@ def test_scripts_saved_before_post_text_still_load() -> None:
     data = json.loads(script.to_json(script.parse(reply(), STORY, SHORT_FABLE)))
     del data["post"]
     assert script.from_json(json.dumps(data)).post == script.PostText()
+
+
+def test_brief_requires_payoff_and_more_visual_beats() -> None:
+    assert "final scene must pay off the hook" in script.SYSTEM
+    assert "never invent a twist" in script.SYSTEM
+    assert "6 to 9" in script.prompt(STORY, SHORT_FABLE)
+    assert "10 to 14" in script.prompt(STORY, LONG_LESSON)
+    long = script.parse(
+        reply(words_per_paragraph=14, paragraphs=12, lesson="Trust slowly."), STORY, LONG_LESSON
+    )
+    assert script.problems(long, LONG_LESSON) == []

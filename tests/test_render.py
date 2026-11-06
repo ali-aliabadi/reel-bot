@@ -38,21 +38,35 @@ def test_ass_has_the_frame_style_and_escaped_cues() -> None:
     assert "Dialogue: 0,0:01:01.50,1:02:03.46,Caption,,0,0,0,,grapes" in out
 
 
-def test_ffmpeg_args_use_relative_files_and_pan_alternately() -> None:
+def test_ffmpeg_args_keep_timing_with_motion_and_dissolves() -> None:
     shots = (Shot("picture-1.png", 0.0, 10.5), Shot("picture-2.png", 10.5, 14.5))
     args = render.ffmpeg_args(shots, "voice.wav", "captions.ass", "out.mp4")
     assert args[0] == "ffmpeg"
     assert args[-1] == "out.mp4"
     assert args.count("-loop") == 2
-    assert args[args.index("-threads") + 1] == "2"
+    assert args[args.index("-threads", args.index("-c:v")) + 1] == "2"
     assert args[args.index("-x264-params") + 1] == "rc-lookahead=10"  # the memory cap needs it
     graph = args[args.index("-filter_complex") + 1]
-    assert "crop=1080:1920:(iw-1080)/2:'(ih-1920)*min(t/10.5,1)'" in graph
-    assert "(ih-1920)-(ih-1920)*min(t/14.5,1)" in graph
-    assert graph.endswith("concat=n=2:v=1:a=0,ass=captions.ass[out]")
+    assert "crop=1188:2112,zoompan" in graph
+    assert "zoompan=z='1+0.06*" in graph
+    assert "zoompan=z='1.06-0.06*" in graph
+    assert "xfade=transition=fade:duration=0.350000:offset=10.325000" in graph
+    assert "ass=captions.ass,format=yuv420p[out]" in graph
+    assert args[args.index("-filter_complex_threads") + 1] == "1"
     assert args[args.index("-map", args.index("-map") + 1) + 1] == "2:a"
 
 
 def test_pictures_from_keeps_only_file_names() -> None:
     raw = '{"pictures": [{"section": "p1", "path": "../x/picture-1.png", "prompt": "p"}]}'
     assert render.pictures_from(raw) == [("p1", "picture-1.png")]
+
+
+def test_single_picture_and_short_shots() -> None:
+    one = render.ffmpeg_args([Shot("a.png", 0, 5)], "v.wav", "c.ass", "out.mp4")
+    graph = one[one.index("-filter_complex") + 1]
+    assert "xfade" not in graph
+    assert "[v0]ass=" in graph
+    short = render.ffmpeg_args(
+        [Shot("a.png", 0, 0.2), Shot("b.png", 0.2, 0.3)], "v.wav", "c.ass", "out.mp4"
+    )
+    assert "duration=0.100000:offset=0.150000" in short[short.index("-filter_complex") + 1]
