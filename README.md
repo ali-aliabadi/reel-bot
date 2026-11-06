@@ -55,6 +55,10 @@ short videos or 10-14 for long ones (up to 90 seconds). Kokoro reads faster,
 with shorter pauses; ffmpeg adds gentle zooms and short dissolves locally.
 Already cached videos keep their existing script, audio and render.
 
+Cloudflare drafts use the approved option D: Klein 4B at 1024×1024 with a
+detailed ink-and-gouache manuscript style, aged parchment and muted earth tones.
+Existing cached drafts are reused with their original model attribution.
+
 Picture prompts in Relay are copyable code blocks, including alongside a draft;
 use Telegram's code-block Copy action (client support may vary). Paste into
 Gemini AI Studio or ChatGPT and reply with the image file.

@@ -29,7 +29,7 @@ def test_plan_draws_one_picture_per_paragraph() -> None:
     first = plan.pictures[0].prompt
     assert "A fox leaping at a vine." in first
     assert PICTURE_STYLE in first
-    assert "lower third" in first
+    assert "quiet natural ground continuous with the scene" in first
     assert "'The Fox and the Grapes'" in first
 
 

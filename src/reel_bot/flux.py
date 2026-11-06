@@ -1,5 +1,5 @@
-"""Draft pictures from Cloudflare Workers AI (FLUX.1 schnell), free on its daily
-allocation (10,000 neurons a day, about 100 pictures; reel-bot needs 3 to 6).
+"""Draft pictures from Cloudflare Workers AI (FLUX.2 klein 4B), using its daily
+free allocation. Each request asks for the approved 1024-square composition.
 
 `parse` is pure; `Flux` sends one request with `web.Net` (timeout and bounded
 retries). The token travels only in a header and is never logged; prompts and
@@ -11,19 +11,23 @@ import base64
 import binascii
 import json
 import re
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import cast
 
 from reel_bot import config, visuals, web
 
-MODEL = "@cf/black-forest-labs/flux-1-schnell"
+MODEL = "@cf/black-forest-labs/flux-2-klein-4b"
+NAME = "FLUX.2 [klein] 4B"
 API = "https://api.cloudflare.com/client/v4"
-STEPS = 8  # the model's most, for the best picture; still far inside the free allocation
-MAX_PROMPT = 2048  # the model's limit on the prompt
+SIZE = 1024
+MAX_PROMPT = 2048  # keep requests bounded, as with the previous drafter
 TIMEOUT_S = 90.0
 MAX_BYTES = 5 << 20  # Relay's limit on an image block
-LICENCE = "FLUX.1 [schnell], Apache-2.0, on Cloudflare Workers AI: commercial use allowed"
+LICENCE = f"{NAME}, Apache-2.0, on Cloudflare Workers AI: commercial use allowed"
+LEGACY_NAME = "FLUX.1 schnell"
+LEGACY_LICENCE = "FLUX.1 [schnell], Apache-2.0, on Cloudflare Workers AI: commercial use allowed"
 _ACCOUNT = re.compile(r"^[0-9a-f]{32}$")
 
 
@@ -64,8 +68,18 @@ class Flux:
 
     def draw(self, prompt: str) -> bytes:
         """One picture for `prompt` (cut to the model's limit)."""
-        body = json.dumps({"prompt": prompt[:MAX_PROMPT], "steps": STEPS}).encode()
-        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        # Klein requires multipart even for text-only generation; steps are fixed.
+        boundary = f"reelbot{uuid.uuid4().hex}"
+        fields = {"prompt": prompt[:MAX_PROMPT], "width": str(SIZE), "height": str(SIZE)}
+        parts = [
+            f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'
+            for key, value in fields.items()
+        ]
+        body = ("".join(parts) + f"--{boundary}--\r\n").encode()
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
         url = f"{self.api}/accounts/{self.account}/ai/run/{MODEL}"
         return parse(self.net.send(web.Request("POST", url, "workers ai", body, headers)).body)
 

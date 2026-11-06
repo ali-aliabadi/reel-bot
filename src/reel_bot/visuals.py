@@ -1,21 +1,17 @@
 """Visuals stage, pure core: one picture prompt per paragraph.
 
 Each paragraph of the script carries a one-sentence description of its scene;
-this module adds the channel's fixed style and the frame's needs (vertical,
-calm lower third for captions) and names the files. The hook is shown over the
+this module adds the channel's fixed style and the frame's needs (square,
+quiet ground for captions) and names the files. The hook is shown over the
 first picture and the lesson over the last, so only paragraphs get pictures.
 Tara makes the pictures from these prompts; `visuals_write` saves them.
 """
 
 from dataclasses import dataclass
 
-from reel_bot.script import PICTURE_STYLE, Script
+from reel_bot.image_style import FRAME, PICTURE_STYLE
+from reel_bot.script import Script
 
-FRAME = (
-    "Vertical 2:3 composition for a phone screen; the main figures in the upper "
-    "two thirds; the lower third quiet (ground, water or border) so captions stay "
-    "readable."
-)
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 SUFFIXES = (".png", ".jpg", ".webp")  # the picture types a video takes
 

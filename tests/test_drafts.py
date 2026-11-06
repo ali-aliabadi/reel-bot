@@ -1,10 +1,12 @@
-"""reel-bot's draft pictures (Workers AI's FLUX.1 schnell): Tara uses each draft or
+"""reel-bot's draft pictures (Workers AI's FLUX.2 klein): Tara uses each draft or
 makes her own, and a draft that can't be made falls back to her own picture."""
 
 import base64
 import json
 import sqlite3
 from dataclasses import replace
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path
 
 import pytest
@@ -84,7 +86,7 @@ def test_tara_gets_the_draft_with_its_prompt_and_can_use_it(
     folder = tmp_path / "out" / vid
     assert (folder / "picture-1.jpg").read_bytes() == JPEG
     (asset,) = [a for a in store_videos.assets(conn, vid) if a.path == "picture-1.jpg"]
-    assert asset.source == "drawn by FLUX.1 schnell, chosen by tara"
+    assert asset.source == "drawn by FLUX.2 [klein] 4B, chosen by tara"
     assert asset.licence == flux.LICENCE
     assert len(painter.prompts) == 2  # one draw per picture, never twice
 
@@ -164,9 +166,30 @@ def test_flux_asks_workers_ai_for_one_picture() -> None:
     (req,) = net.sent
     assert req.url == f"{flux.API}/accounts/{ACCOUNT}/ai/run/{flux.MODEL}"
     assert req.headers["Authorization"] == "Bearer tok"
-    body = json.loads(req.body)
-    assert body == {"prompt": "p" * flux.MAX_PROMPT, "steps": flux.STEPS}
+    mime = BytesParser(policy=policy.default).parsebytes(
+        f"Content-Type: {req.headers['Content-Type']}\r\n\r\n".encode() + req.body
+    )
+    assert mime.is_multipart()
+    fields = {
+        part.get_param("name", header="content-disposition"): part.get_content()
+        for part in mime.iter_parts()
+    }
+    assert fields == {"prompt": "p" * flux.MAX_PROMPT, "width": "1024", "height": "1024"}
     assert "tok" not in repr(flux.Flux(ACCOUNT, "tok", net))
+
+
+def test_cached_schnell_drafts_keep_their_original_attribution(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    run, relay, vid = at_picture_one(conn, tmp_path, Painter())
+    folder = tmp_path / "out" / vid
+    (folder / "draft-1.model").unlink()  # cached before the model migration
+    relay.answer(4, Answer("tara", drafts.USE, None, ""))
+    daily.tick(run)
+    (asset,) = [a for a in store_videos.assets(conn, vid) if a.path == "picture-1.jpg"]
+    assert asset.source == "drawn by FLUX.1 schnell, chosen by tara"
+    assert asset.licence == flux.LEGACY_LICENCE
+    assert (folder / "picture-1.jpg").read_bytes() == JPEG
 
 
 @pytest.mark.parametrize(
