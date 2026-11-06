@@ -15,6 +15,7 @@ import pytest
 from reel_bot import (
     captions,
     captions_write,
+    flux,
     guide,
     relay_api,
     render,
@@ -107,3 +108,11 @@ def test_relay_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str)
     with pytest.raises(web.WebError, match="relay send failed"):
         relay.send({"to": ["ali"], "text": "hi", "idempotency_key": "k1"})
     assert slept == [2.0, 4.0]  # safe to retry: every message has an idempotency key
+
+
+def test_workers_ai_calls_time_out_and_retry_a_bounded_number_of_times(slow_api: str) -> None:
+    slept: list[float] = []
+    drafter = flux.Flux("0" * 32, "t", web.Web(timeout_s=0.2, sleep=slept.append), slow_api)
+    with pytest.raises(web.WebError, match="workers ai failed"):
+        drafter.draw("A fox.")
+    assert slept == [2.0, 4.0]

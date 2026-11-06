@@ -15,6 +15,7 @@ from reel_bot import (
     daily,
     daily_cancel,
     daily_run,
+    flux,
     guide,
     pipeline,
     relay_api,
@@ -75,7 +76,9 @@ def _run(
     )
     people = daily_run.People(cfg.relay_user, narrator)
     ctx = _context(conn, env, clock, cap)
-    return daily_run.Run(conn, relay, people, clock, ctx, config.narration(env))
+    drafter = flux.from_env(env, web.Web(flux.TIMEOUT_S))
+    draw = drafter.draw if drafter else None
+    return daily_run.Run(conn, relay, people, clock, ctx, config.narration(env), draw)
 
 
 def main(

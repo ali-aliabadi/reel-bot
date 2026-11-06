@@ -3,8 +3,8 @@
 The daily run is two systemd timers (units in `systemd/`):
 
 - `reel-bot-daily-start.timer` at 08:00 asks ali in Relay to pick one of three stories.
-- `reel-bot-daily-tick.timer` every 5 minutes records the pick, has Tara get the script
-  from ChatGPT, then asks her one step at a time for the voice note and each picture, collects her voice note and pictures,
+- `reel-bot-daily-tick.timer` every minute records the pick, has Tara get the script
+  from ChatGPT, then asks her one step at a time for the voice note and each picture (showing reel-bot's free draft of it first when `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are set), collects her voice note and pictures,
   renders the video and sends her (and ali) the MP4 with its post text to copy.
 
 Before installing: the Phase 0 VPS steps in `docs/ROADMAP.md` are done (checkout in
@@ -22,7 +22,7 @@ systemctl list-timers 'reel-bot-*'
 journalctl -u reel-bot-daily-tick -n 50     # what the last ticks did
 ```
 
-An error is retried on the next tick; the third in a row stops the video and sends the
+An error is retried on the next tick; the tenth in a row (about 10 minutes) stops the video and sends the
 picker (`RELAY_USER`) a high-urgency Relay alert naming the video and the step; fix the
 cause, then `make run ARGS="daily retry VIDEO_ID"`. To drop a day instead, tap "Skip today" on the
 morning pick, or `make run ARGS="daily cancel VIDEO_ID"` (`daily list` shows the IDs). To stop: `sudo systemctl disable --now

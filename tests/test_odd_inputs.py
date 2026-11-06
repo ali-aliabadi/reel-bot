@@ -17,6 +17,7 @@ import pytest
 from reel_bot import (
     captions,
     captions_write,
+    flux,
     instagram,
     publish,
     relay_api,
@@ -102,8 +103,9 @@ def parse_script(raw: bytes) -> object:
             },
         ),
         (relay_api.parse_sent, relay_api.RelayError, {"id": "msg_01J", "status": "queued"}),
+        (flux.parse, flux.FluxError, {"result": {"image": "/9j/4A=="}, "success": True}),
     ],
-    ids=["script", "transcription", "relay answers", "relay sent"],
+    ids=["script", "transcription", "relay answers", "relay sent", "workers ai"],
 )
 def test_parsers_raise_only_their_own_error(
     parse: Callable[[bytes], object], error: type[Exception], good: dict[str, Any]

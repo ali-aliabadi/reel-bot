@@ -1,10 +1,11 @@
 """Visuals stage, I/O edge: the pictures Tara makes from each paragraph's prompt.
 
-Tara makes each picture in ChatGPT from its prompt (`visuals.plan`) and sends it
-back through Relay; ali can also add one by hand (`reel-bot visuals --add`).
-`add` saves a picture as it arrives, keeping its own type, and records it as an
-asset with its source and licence. `finish` records the stage once every
-picture is in. Pictures cost reel-bot nothing.
+Tara makes each picture in ChatGPT from its prompt (`visuals.plan`), or picks
+reel-bot's draft of it (`drafts`), through Relay; ali can also add one by hand
+(`reel-bot visuals --add`). `add` saves a picture as it arrives, keeping its own
+type, and records it as an asset with its source and licence. `finish` records
+the stage once every picture is in. Pictures cost reel-bot nothing (drafts come
+from Workers AI's free allocation).
 """
 
 import json
@@ -26,11 +27,14 @@ LATER = ("visuals", "render")  # stages a new picture makes stale
 
 @dataclass(frozen=True)
 class Made:
-    """A picture as it arrived: its bytes, who made it in ChatGPT, and when."""
+    """A picture as it arrived: its bytes, who made it (or chose reel-bot's draft),
+    and when; `source` and `licence` default to a picture made in ChatGPT."""
 
     data: bytes
     by: str
     at: datetime
+    source: str = ""
+    licence: str = LICENCE
 
 
 def plan(conn: sqlite3.Connection, out_dir: Path, video_id: str) -> visuals.Visuals:
@@ -62,7 +66,8 @@ def add(conn: sqlite3.Connection, out_dir: Path, video_id: str, number: int, mad
     tmp = path.with_suffix(".tmp")
     tmp.write_bytes(made.data)
     tmp.replace(path)
-    asset = videos.Asset(path.name, "image", f"made in ChatGPT by {made.by}", LICENCE, made.at)
+    source = made.source or f"made in ChatGPT by {made.by}"
+    asset = videos.Asset(path.name, "image", source, made.licence, made.at)
     store_videos.add_asset(conn, video_id, asset)
     log.info("picture added", extra={"video_id": video_id, "section": pic.section})
     return path

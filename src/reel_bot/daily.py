@@ -56,7 +56,7 @@ from reel_bot.relay_api import (
 log = logging.getLogger(__name__)
 
 CHOICES = 3
-MAX_ERRORS = 3  # errors in a row (one per tick) before a video stops and alerts
+MAX_ERRORS = 10  # errors in a row (one per tick, a minute apart) before a video stops and alerts
 ERRORS = (
     *pipeline.ERRORS,
     DailyError,
