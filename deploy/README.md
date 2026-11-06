@@ -51,3 +51,24 @@ ssh-keyscan -p PORT HOST                                             # for VPS_K
 In GitHub, create a `production` environment (Settings, Environments) and set the
 secrets `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (the private key file),
 `VPS_KNOWN_HOSTS` and, if not 22, `VPS_PORT`. Then delete the private key from your Mac.
+
+## Live progress card
+
+After deploying the reel-bot code, install the independent observer:
+
+```sh
+sudo cp /opt/reel-bot/deploy/systemd/reel-bot-progress.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now reel-bot-progress.service
+journalctl -u reel-bot-progress.service -n 20
+```
+
+It uses the existing `.env`, app key and recipients and needs no new secrets.
+Relay must first expose text editing and report `edit_text: true` on its Telegram
+channel. Until then the observer logs that it is waiting and sends no cards.
+Once Relay is upgraded it starts automatically on its next poll. The observer is
+capped at 200 MB, does not load AI models, and reads the video database without
+writing or migrating it. A diagnostic one-shot update is available with
+`python -m reel_bot.cli_progress --once --video-id VIDEO_ID`; specifying an ID
+also permits a status card for that completed cycle. The observer can be stopped
+with `systemctl stop reel-bot-progress.service` without stopping video generation.

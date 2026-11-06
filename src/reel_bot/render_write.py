@@ -16,7 +16,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from reel_bot import captions, captions_write, render, store_videos, videos, visuals_write, voice
+from reel_bot import (
+    captions,
+    captions_write,
+    progress_io,
+    render,
+    store_videos,
+    videos,
+    visuals_write,
+    voice,
+)
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +113,8 @@ def make(
     shots = render.timeline(cap, pictures, total)
     (folder / CAPTIONS_FILE).write_text(render.ass(cap.cues), encoding="utf-8")
     tmp = folder / "render.tmp.mp4"
+    progress_io.write(folder, "render", 0, total)
+    (folder / "render.progress.txt").unlink(missing_ok=True)
     _run(render.ffmpeg_args(shots, voice.FILENAME, CAPTIONS_FILE, tmp.name), folder, TIMEOUT_S)
     width, height, seconds, has_audio = _probe(tmp)
     if (width, height) != (render.WIDTH, render.HEIGHT) or not has_audio:

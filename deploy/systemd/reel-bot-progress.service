@@ -1,0 +1,19 @@
+# Updates one silent Telegram status card per video, independently of the worker.
+[Unit]
+Description=reel-bot: live bot progress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/reel-bot
+EnvironmentFile=/opt/reel-bot/.env
+ExecStart=/opt/reel-bot/.venv/bin/python -m reel_bot.cli_progress
+Restart=on-failure
+RestartSec=20
+Nice=15
+MemoryMax=200M
+MemorySwapMax=0
+
+[Install]
+WantedBy=multi-user.target

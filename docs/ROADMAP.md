@@ -68,6 +68,8 @@ should be one small PR unless noted. Design details are in
 
 - [x] Migrate daily step constraints to support all 14 scenes and verify the complete picture-request flow
 
+- [x] Independent live bot progress cards, real offline-stage checkpoints and clear waiting/retry/interruption states
+
 ## Phase 4: metrics and decisions
 
 - [ ] `metrics` table; nightly YouTube Analytics pull for videos at 72 hours

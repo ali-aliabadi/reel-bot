@@ -18,11 +18,13 @@ import onnxruntime as ort
 from kokoro_onnx import Kokoro
 from kokoro_onnx.config import EspeakConfig
 
-from reel_bot import guide
+from reel_bot import guide, progress_io
 
 
 def main(argv: list[str]) -> None:
     model_dir, out = Path(argv[0]), argv[1]
+    paragraphs = guide.paragraphs(sys.stdin.read())
+    progress_io.write(Path(out).parent, "voice", 0, max(1, len(paragraphs)))
     opts = ort.SessionOptions()
     opts.intra_op_num_threads, opts.inter_op_num_threads = guide.THREADS, 1
     session = ort.InferenceSession(str(model_dir / guide.MODEL_FILE), opts)
@@ -30,9 +32,10 @@ def main(argv: list[str]) -> None:
     kokoro = Kokoro.from_session(session, str(model_dir / guide.VOICES_FILE), espeak_config=espeak)
     parts: list[np.ndarray] = []  # pyright: ignore[reportMissingTypeArgument]
     rate = 24000
-    for paragraph in guide.paragraphs(sys.stdin.read()):
+    for number, paragraph in enumerate(paragraphs, 1):
         audio, rate = kokoro.create(paragraph, voice=guide.VOICE, speed=guide.SPEED, lang="en-us")
         parts += [audio, np.zeros(int(guide.GAP_S * rate), dtype=np.float32)]
+        progress_io.write(Path(out).parent, "voice", number, len(paragraphs))
     samples = np.concatenate(parts[:-1]) if parts else np.zeros(1, dtype=np.float32)
     with wave.open(out, "wb") as w:
         w.setnchannels(1)

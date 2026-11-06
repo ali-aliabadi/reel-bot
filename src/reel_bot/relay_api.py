@@ -11,7 +11,7 @@ import binascii
 import json
 import mimetypes
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -276,7 +276,7 @@ def parse_sent(body: bytes) -> str:
 @dataclass(frozen=True)
 class Relay:
     url: str  # https base URL
-    key: str
+    key: str = field(repr=False)
     app: str
     net: web.Net
 

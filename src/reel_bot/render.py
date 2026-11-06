@@ -106,7 +106,8 @@ def _shot_filter(i: int, seconds: float) -> str:
 def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str) -> list[str]:
     """Motion and overlapping dissolves without shortening the narration timeline."""
     args = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-            "-filter_complex_threads", "1"]  # fmt: skip
+            "-filter_complex_threads", "1", "-progress", "render.progress.txt",
+            "-stats_period", "2"]  # fmt: skip
     # Half a dissolve on either side keeps each caption-aligned cut at its midpoint.
     fade = min(DISSOLVE_S, min(s.seconds for s in shots) / 2)
     durations = [

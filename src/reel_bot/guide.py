@@ -15,6 +15,8 @@ import wave
 from collections.abc import Callable
 from pathlib import Path
 
+from reel_bot import progress_io
+
 MODEL_DIR = Path("models") / "kokoro"  # relative to the checkout; see `make models`
 MODEL_FILE, VOICES_FILE = "kokoro-v1.0.int8.onnx", "voices-v1.0.bin"
 KOKORO = [sys.executable, "-m", "reel_bot.kokoro"]  # + model dir and output wav
@@ -66,6 +68,7 @@ def local(model_dir: Path = MODEL_DIR, timeout_s: float = TIMEOUT_S) -> Speak:
         raise GuideError(f"no Kokoro model in {model_dir}: run make models")
 
     def speak(text: str, out: Path) -> None:
+        progress_io.write(out.parent, "voice", 0, max(1, len(paragraphs(text))))
         _run([*KOKORO, str(model_dir), str(out)], timeout_s, "Kokoro", text.encode())
 
     return speak

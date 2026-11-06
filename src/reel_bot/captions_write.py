@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from reel_bot import captions, script, store_videos, videos, voice
+from reel_bot import captions, progress_io, script, store_videos, videos, voice
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ def local(model_dir: Path = MODEL_DIR, timeout_s: float = TIMEOUT_S) -> Transcri
         raise captions.CaptionsError(f"no Whisper model in {model_dir}: run make models")
 
     def transcribe(audio: Path) -> Heard:
+        progress_io.write(audio.parent, "captions", 0, 1)
         args = [*WHISPER, str(model_dir), str(audio)]
         if shutil.which("nice"):
             args = ["nice", "-n", "10", *args]
