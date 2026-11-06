@@ -76,3 +76,12 @@ guarantee API access. A quota error on a billing-disabled project is an expected
 result. The flag is your confirmation, not an API-enforced spending limit: there
 is no per-request free-only switch. Do not use a billed project's key for this
 probe. See [Google pricing](https://ai.google.dev/gemini-api/docs/pricing).
+
+The bot can maintain one silent, live progress card per cycle: current stage,
+real stage progress where available, image count, elapsed time and last update.
+`reel-bot-progress.service` refreshes it about every 20 seconds independently of
+the heavy worker, including during narration, captions and rendering. It shows
+waiting, retry, interruption, stopped and complete states. Finished cards stop
+updating, and reruns reuse the same card. This needs Relay's authenticated text
+editing API (`PATCH /v1/messages/{id}/text` and the `edit_text` channel capability).
+Until that Relay release is deployed, the observer waits without sending cards.

@@ -162,3 +162,29 @@ message IDs, timestamps and retry counts. This is required for the expanded
 story briefs: otherwise a picture-7 Relay message can be sent but its database
 record fails, crashing the worker. Regression checks cover both an upgrade from
 the previous schema and the daily picture flow through picture 14.
+
+## Live bot progress
+
+A separate, lightweight `reel-bot-progress.service` runs
+`python -m reel_bot.cli_progress`, polling every 20 seconds. It opens the video
+database read-only, combines recorded steps with numeric checkpoints, and edits
+one low-urgency Relay text message per video to the existing picker/narrator.
+It never changes a pick, stage, error counter or publishing state. Progress
+transport failures cannot stop a video. A stable idempotency key and atomic
+`progress-card.json` preserve the message ID across restarts; no fallback sends
+are used after edit failures. Old completed cycles get no unsolicited cards.
+Stopped/cancelled/complete cards become terminal, but a retried video can reopen
+its existing card. The observer checks Relay's `edit_text` capability first and
+waits silently on old Relay releases.
+
+Kokoro records completed spoken sections; Whisper records processed audio time;
+ffmpeg writes `out_time_us` through its progress protocol. Percentages are real
+per-stage completion, not time estimates or an invented whole-video percentage.
+Narration/captions/render remain capped at 99% until their stage is recorded;
+100% completion is shown only after Relay confirms the video file was delivered.
+Queued uploads remain in a delivering state, and failed file deliveries are shown explicitly. Status includes
+elapsed time and an update timestamp, with stale checkpoints called out. The
+worker's `activating` systemd state counts as running (it is a oneshot service).
+Progress records contain numeric counters only; the observer holds no model or
+Telegram bot key. It uses the existing app-scoped Relay key to update its own
+text messages and cannot alter the human choice questions.
