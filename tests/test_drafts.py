@@ -72,6 +72,7 @@ def test_tara_gets_the_draft_with_its_prompt_and_can_use_it(
     image, text, question = relay.last()["blocks"]
     assert base64.b64decode(image["base64"]) == JPEG
     assert image["content_type"] == "image/jpeg"
+    assert text["type"] == "code"
     assert "A fox, scene 0." in text["text"] == painter.prompts[0]
     assert question["options"] == [drafts.USE, drafts.OWN]
     assert relay.last()["idempotency_key"] == f"{vid}-picture-1"

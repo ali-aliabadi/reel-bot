@@ -64,6 +64,8 @@ should be one small PR unless noted. Design details are in
 
 - [x] Faster Kokoro narration, punch-line script brief, more illustrated beats, offline camera motion and caption-aligned dissolves
 
+- [x] Copyable picture prompts and a standalone, billing-disabled Gemini image API probe (daily provider unchanged)
+
 ## Phase 4: metrics and decisions
 
 - [ ] `metrics` table; nightly YouTube Analytics pull for videos at 72 hours

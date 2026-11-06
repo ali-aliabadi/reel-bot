@@ -137,10 +137,11 @@ def picture_message(
         "title": f"Picture {number} of {count}: {title}"[:256],
         "idempotency_key": f"{video_id}-picture-{number}",
         "blocks": [
-            {"type": "text", "text": prompt},
+            {"type": "code", "text": prompt},
             {
                 "type": "question",
-                "text": "Make this picture in ChatGPT and reply to this message with it "
+                "text": "Copy the prompt above into Gemini AI Studio or ChatGPT, "
+                "then reply with the picture "
                 "(send it as a file to keep full quality).",
                 "reply": "image",
             },

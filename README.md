@@ -54,3 +54,25 @@ New story briefs request a punch-line ending and 6-9 illustrated scenes for
 short videos or 10-14 for long ones (up to 90 seconds). Kokoro reads faster,
 with shorter pauses; ffmpeg adds gentle zooms and short dissolves locally.
 Already cached videos keep their existing script, audio and render.
+
+Picture prompts in Relay are copyable code blocks, including alongside a draft;
+use Telegram's code-block Copy action (client support may vary). Paste into
+Gemini AI Studio or ChatGPT and reply with the image file.
+
+To test Gemini's image API separately, put `GEMINI_API_KEY` in the VPS's `.env`
+using a key from a project **with billing disabled**, then run from the checkout:
+
+```sh
+set -a; . ./.env; set +a
+uv run python -m reel_bot.cli_gemini_probe --billing-disabled \
+  --model gemini-3.1-flash-image --prompt-file /tmp/image-prompt.txt --out /tmp/gemini-test
+```
+
+The probe sends one request with a 90-second timeout, no retries, and writes the
+returned picture with its detected extension. It refuses an existing output and
+never switches the daily image provider. Google currently lists Gemini image
+models as having no free API tier; free browser generations in AI Studio do not
+guarantee API access. A quota error on a billing-disabled project is an expected
+result. The flag is your confirmation, not an API-enforced spending limit: there
+is no per-request free-only switch. Do not use a billed project's key for this
+probe. See [Google pricing](https://ai.google.dev/gemini-api/docs/pricing).

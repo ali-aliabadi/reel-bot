@@ -146,3 +146,13 @@ between scenes instead of 0.7 s. Camera motion and dissolves are generated
 offline in ffmpeg; they animate the framing of still illustrations, not the
 characters themselves. Script writing still uses the existing ChatGPT handoff
 or the budget-guarded API; no new paid video service is introduced.
+
+Picture prompts are Relay `code` blocks, preserved when a draft is shown, so
+Telegram clients can expose a Copy action for the prompt alone. Image requests
+mention both Gemini AI Studio and ChatGPT. `cli_gemini_probe` is an isolated
+one-image experiment; no Gemini key is read by the daily pipeline. It requires
+an explicit billing-disabled-project confirmation, sends one non-retried request
+with a 90-second timeout, validates image bytes, and refuses existing outputs.
+Google's current image API pricing has no free tier; a live access test requires
+a user-provided key from a project without billing. API automation is not enabled
+by this experiment.

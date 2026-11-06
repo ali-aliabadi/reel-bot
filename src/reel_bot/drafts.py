@@ -67,7 +67,7 @@ def message(plain: dict[str, object], draft: Path) -> dict[str, object]:
             prompt,
             {
                 "type": "question",
-                "text": "Use this picture, or make your own in ChatGPT from the prompt?",
+                "text": "Use this picture, or copy the prompt into Gemini AI Studio or ChatGPT?",
                 "options": [USE, OWN],
             },
         ],
