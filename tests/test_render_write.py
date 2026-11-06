@@ -57,15 +57,21 @@ def _ffmpeg(*args: str) -> None:
 
 @needs_ffmpeg
 @pytest.mark.parametrize("relative", [False, True])
+@pytest.mark.parametrize("picture_count", [1, 2, 14])
 def test_renders_a_five_second_clip(
-    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: bool
+    conn: sqlite3.Connection,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relative: bool,
+    picture_count: int,
 ) -> None:
     # The VPS uses the default out dir "out", relative to the checkout.
     monkeypatch.chdir(tmp_path)
     out = Path("out") if relative else tmp_path / "out"
     v = new_video(conn)
     folder = videos.video_dir(out, v.id)
-    for i, color in ((1, "navy"), (2, "goldenrod")):
+    for i in range(1, picture_count + 1):
+        color = "navy" if i % 2 else "goldenrod"
         _ffmpeg("-f", "lavfi", "-i", f"color=c={color}:s=1024x1536", "-frames:v", "1",
                 str(folder / f"picture-{i}.png"))  # fmt: skip
     _ffmpeg("-f", "lavfi", "-i", "sine=frequency=220:duration=5", "-ar", "48000", "-ac", "1",
@@ -74,11 +80,17 @@ def test_renders_a_five_second_clip(
         v.id,
         (),
         (Cue("A fox", 0.2, 1.0), Cue("wanted grapes", 1.0, 2.0), Cue("He left", 3.0, 4.5)),
-        (Section("hook", 0.2, 2.0), Section("p1", 2.2, 2.8), Section("p2", 3.0, 4.5)),
+        tuple(
+            Section(f"p{i + 1}", i * 5 / picture_count + 0.05, (i + 1) * 5 / picture_count - 0.05)
+            for i in range(picture_count)
+        ),
         1.0,
     )
     (folder / "captions.json").write_text(captions.to_json(cap), encoding="utf-8")
-    pictures = [{"section": f"p{i}", "path": f"picture-{i}.png", "prompt": "x"} for i in (1, 2)]
+    pictures = [
+        {"section": f"p{i}", "path": f"picture-{i}.png", "prompt": "x"}
+        for i in range(1, picture_count + 1)
+    ]
     (folder / "visuals.json").write_text(json.dumps({"pictures": pictures}), encoding="utf-8")
     for stage, path in (("voice", "voice.wav"), ("captions", "captions.json"),
                         ("visuals", "visuals.json")):  # fmt: skip

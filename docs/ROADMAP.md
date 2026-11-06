@@ -57,10 +57,12 @@ should be one small PR unless noted. Design details are in
 - [x] Scheduled run on the VPS (systemd timer) at a fixed hour, under a memory cap (`MemoryMax`) so Relay and the other services survive a bad render (units in `deploy/systemd`)
 - [ ] ali: set `REEL_BOT_NARRATOR` in the VPS's `.env` and install the timers (`deploy/README.md`)
 - [ ] Grow the catalog: every tale in the four public-domain sources, with source references
-- [x] Reading guide for Tara: the script read by a local TTS (Kokoro) at 2.3 words a second, sent with the voice-note question
+- [x] Reading guide for Tara: the script read by a local TTS (Kokoro) at 2.6 words a second, sent with the voice-note question
 - [x] Draft pictures: reel-bot draws each picture free on Cloudflare Workers AI (FLUX.1 schnell) and Tara uses it or makes her own; the tick runs every minute
 - [ ] ali: create a free Cloudflare account and a Workers AI token, set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in the VPS's `.env`, and copy the new tick timer (`deploy/README.md`)
 - [x] Kokoro as the daily videos' voice by default (`REEL_BOT_NARRATION=kokoro`; `tara` turns her voice notes back on), recorded as an `ai-voice` asset and disclosed in the post
+
+- [x] Faster Kokoro narration, punch-line script brief, more illustrated beats, offline camera motion and caption-aligned dissolves
 
 ## Phase 4: metrics and decisions
 

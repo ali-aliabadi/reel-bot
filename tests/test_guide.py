@@ -92,3 +92,8 @@ def test_local_reports_a_failed_kokoro(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(guide, "KOKORO", [sys.executable, "-c", fail])
     with pytest.raises(guide.GuideError, match="Kokoro exited 3: boom"):
         guide.local(tmp_path)("Hello.", tmp_path / "out.wav")
+
+
+def test_narration_is_faster_with_shorter_scene_pauses() -> None:
+    assert pytest.approx(2.6 / 3.0) == guide.SPEED
+    assert guide.GAP_S == 0.35

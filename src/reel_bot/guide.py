@@ -19,12 +19,12 @@ MODEL_DIR = Path("models") / "kokoro"  # relative to the checkout; see `make mod
 MODEL_FILE, VOICES_FILE = "kokoro-v1.0.int8.onnx", "voices-v1.0.bin"
 KOKORO = [sys.executable, "-m", "reel_bot.kokoro"]  # + model dir and output wav
 VOICE = "af_heart"
-PACE = 2.3  # words a second; the script's word budgets assume this pace
+PACE = 2.6  # words a second; the script's word budgets assume this pace
 # ponytail: calibration knob. Kokoro's own pace at speed 1 is about 3.0 words a
 # second (measured on the VPS), so it is slowed here and ffmpeg's atempo only
 # trims the length to exact.
 SPEED = PACE / 3.0
-GAP_S = 0.7  # a breath between paragraphs
+GAP_S = 0.35  # a breath between paragraphs
 THREADS = 2  # like ffmpeg and Whisper, leave the VPS's other services room
 TIMEOUT_S = 1200  # a 100-word script takes about 4 minutes on the VPS (about 600 MB at peak)
 FILENAME = "guide.mp3"
