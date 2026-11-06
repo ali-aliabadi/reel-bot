@@ -46,9 +46,20 @@ def make(folder: Path, number: int, prompt: str, draw: Draw | None) -> Path | No
     path = folder / f"draft-{number}{suffix}"
     tmp = path.with_suffix(".tmp")
     tmp.write_bytes(data)
+    # Write provenance before exposing the image. Older cached drafts have no
+    # marker and must keep their Schnell attribution when chosen after deploy.
+    path.with_suffix(".model").write_text(flux.MODEL, encoding="utf-8")
     tmp.replace(path)
     log.info("draft picture made", extra={"picture": number})
     return path
+
+
+def provenance(path: Path) -> tuple[str, str]:
+    """The model and commercial licence for this draft, including older caches."""
+    marker = path.with_suffix(".model")
+    if marker.is_file() and marker.read_text("utf-8").strip() == flux.MODEL:
+        return flux.NAME, flux.LICENCE
+    return flux.LEGACY_NAME, flux.LEGACY_LICENCE
 
 
 def message(plain: dict[str, object], draft: Path) -> dict[str, object]:

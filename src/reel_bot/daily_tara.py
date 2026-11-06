@@ -13,7 +13,6 @@ from pathlib import Path
 
 from reel_bot import (
     drafts,
-    flux,
     guide,
     narration,
     pipeline,
@@ -112,8 +111,9 @@ def _chosen(run: Run, vid: str, number: int, got: Answer) -> visuals_write.Made 
     draft = drafts.found(videos.video_dir(run.context(vid).out_dir, vid), number)
     if draft is None:
         return "reel-bot's draft of it is gone"
-    source = f"drawn by FLUX.1 schnell, chosen by {got.recipient}"
-    return visuals_write.Made(draft.read_bytes(), got.recipient, run.clock(), source, flux.LICENCE)
+    model, licence = drafts.provenance(draft)
+    source = f"drawn by {model}, chosen by {got.recipient}"
+    return visuals_write.Made(draft.read_bytes(), got.recipient, run.clock(), source, licence)
 
 
 def _save_picture(run: Run, vid: str, number: int, got: Answer) -> str:

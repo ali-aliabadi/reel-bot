@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, cast
 
+from reel_bot.image_style import PICTURE_STYLE
 from reel_bot.stories import Story
 from reel_bot.videos import Video
 
@@ -28,10 +29,6 @@ SCENES = {"short": (6, 9), "long": (10, 14)}
 HOOK_MAX_WORDS = 14
 POST_TITLE_MAX, POST_CAPTION_MAX, HASHTAGS_MAX = 60, 300, 3
 _HASHTAG = re.compile(r"^[a-z][a-z0-9]{1,29}$")
-PICTURE_STYLE = (
-    "Persian miniature painting, flat perspective, rich lapis blue and gold, "
-    "fine ornamental border, soft daylight, no text or letters"
-)
 
 
 class ScriptError(Exception):
