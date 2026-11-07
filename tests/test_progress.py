@@ -113,10 +113,19 @@ class Relay:
         self.sent: list[dict[str, object]] = []
         self.edits: list[tuple[str, str]] = []
         self.fail = False
+        self.deleted: list[str] = []
+
+    def supports_delete(self) -> bool:
+        return True
+
+    def delete_text(self, message_id: str) -> None:
+        if self.fail:
+            raise web.WebError("relay unavailable")
+        self.deleted.append(message_id)
 
     def send(self, message: dict[str, object]) -> str:
         self.sent.append(message)
-        return "msg_status"
+        return f"msg_status_{len(self.sent)}"
 
     def message_status(self, message_id: str) -> str:
         return "delivered"
@@ -160,6 +169,7 @@ def test_sidecar_edits_one_card_across_restart_and_outage(
         (VID, "sent", "msg_file", NOW.isoformat()),
     )
     assert observer.update(db, VID, NOW)
+    assert observer.update(db, VID, NOW)  # confirm delivery, delete the previous card
     assert not observer.update(db, VID, NOW)
     assert "100%" in relay.edits[-1][1]
     # Historical cycles get no unsolicited cards, unless explicitly requested.

@@ -72,3 +72,9 @@ writing or migrating it. A diagnostic one-shot update is available with
 `python -m reel_bot.cli_progress --once --video-id VIDEO_ID`; specifying an ID
 also permits a status card for that completed cycle. The observer can be stopped
 with `systemctl stop reel-bot-progress.service` without stopping video generation.
+
+Progress stays at the bottom by replacing the card after each delivered step
+or completed stage, then deleting its predecessor after replacement delivery.
+This requires Relay's `delete_text` capability. Older Relay versions retain
+the existing editable card until upgraded. Restart `reel-bot-progress.service`
+after deploying observer code changes; the video worker need not be restarted.

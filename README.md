@@ -89,3 +89,7 @@ waiting, retry, interruption, stopped and complete states. Finished cards stop
 updating, and reruns reuse the same card. This needs Relay's authenticated text
 editing API (`PATCH /v1/messages/{id}/text` and the `edit_text` channel capability).
 Until that Relay release is deployed, the observer waits without sending cards.
+
+The live progress card follows new steps at the bottom of the bot chat. Older
+progress cards are deleted only after their replacement is delivered; percentages
+edit the latest card. Relay must support `delete_text` to enable this behavior.

@@ -68,7 +68,7 @@ should be one small PR unless noted. Design details are in
 
 - [x] Migrate daily step constraints to support all 14 scenes and verify the complete picture-request flow
 
-- [x] Independent live bot progress cards, real offline-stage checkpoints and clear waiting/retry/interruption states
+- [x] Independent live bot progress cards, real offline-stage checkpoints and clear waiting/retry/interruption states; keep the current card at the bottom and delete replaced cards after delivery
 
 ## Phase 4: metrics and decisions
 
