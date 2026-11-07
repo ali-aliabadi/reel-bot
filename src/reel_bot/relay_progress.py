@@ -9,6 +9,21 @@ STATUSES = ("queued", "sending", "delivered", "failed", "partially_delivered")
 
 
 class ProgressRelay(relay_api.Relay):
+    def delete_text(self, message_id: str) -> None:
+        self._check_id(message_id)
+        req = web.Request(
+            "DELETE",
+            f"{self.url}/v1/messages/{message_id}/text",
+            "relay delete",
+            b"",
+            self._headers(),
+            retry=False,
+        )
+        self.net.send(req)
+
+    def supports_delete(self) -> bool:
+        return self._capability("delete_text")
+
     def edit_text(self, message_id: str, text: str) -> None:
         """Replace this app's delivered text message without sending a new one."""
         self._check_id(message_id)
@@ -23,6 +38,9 @@ class ProgressRelay(relay_api.Relay):
 
     def supports_edit(self) -> bool:
         """Old Relay versions have no edit_text capability; do not create stale cards."""
+        return self._capability("edit_text")
+
+    def _capability(self, name: str) -> bool:
         req = web.Request(
             "GET",
             f"{self.url}/v1/channels",
@@ -42,7 +60,7 @@ class ProgressRelay(relay_api.Relay):
                 if isinstance(value, dict):
                     channel = cast(dict[str, object], value)
                     if channel.get("name") == "telegram":
-                        return channel.get("edit_text") is True and channel.get("healthy") is True
+                        return channel.get(name) is True and channel.get("healthy") is True
         except (ValueError, RecursionError):
             return False
         return False

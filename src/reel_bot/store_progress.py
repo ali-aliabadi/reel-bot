@@ -17,6 +17,7 @@ class State:
     errors: int
     running_at: datetime | None
     sent_message: str = ""
+    latest_message: str = ""
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -51,6 +52,10 @@ def state(conn: sqlite3.Connection, video_id: str) -> State:
     )
     error = conn.execute("SELECT count FROM daily_errors WHERE video_id=?", (video_id,)).fetchone()
     running = conn.execute("SELECT at FROM daily_running WHERE video_id=?", (video_id,)).fetchone()
+    latest = conn.execute(
+        "SELECT message_id FROM daily_steps WHERE video_id=? ORDER BY at DESC, rowid DESC LIMIT 1",
+        (video_id,),
+    ).fetchone()
     return State(
         video_id,
         row[1],
@@ -60,4 +65,5 @@ def state(conn: sqlite3.Connection, video_id: str) -> State:
         error[0] if error else 0,
         datetime.fromisoformat(running[0]) if running else None,
         messages.get("sent", ""),
+        latest[0] if latest else "",
     )

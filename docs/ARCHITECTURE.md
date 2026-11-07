@@ -168,14 +168,20 @@ the previous schema and the daily picture flow through picture 14.
 A separate, lightweight `reel-bot-progress.service` runs
 `python -m reel_bot.cli_progress`, polling every 20 seconds. It opens the video
 database read-only, combines recorded steps with numeric checkpoints, and edits
-one low-urgency Relay text message per video to the existing picker/narrator.
+the current low-urgency Relay text message per video to the existing picker/narrator.
+After a new step message is delivered or a stage completes following a human
+reply, it posts a fresh card at the bottom. Routine percentage/timestamp updates
+edit that latest card. Once its replacement is confirmed delivered, the old card
+is deleted using Relay's app-scoped text deletion endpoint. A failed deletion
+stays journaled for retry; questions, prompts, answers and media are never deleted.
 It never changes a pick, stage, error counter or publishing state. Progress
-transport failures cannot stop a video. A stable idempotency key and atomic
-`progress-card.json` preserve the message ID across restarts; no fallback sends
-are used after edit failures. Old completed cycles get no unsolicited cards.
+transport failures cannot stop a video. Per-revision idempotency keys, a pending-send journal and atomic
+`progress-card.json` preserve the current message ID and pending cleanup across
+restarts and lost replies; edit failures never trigger fallback sends. Old completed cycles get no unsolicited cards.
 Stopped/cancelled/complete cards become terminal, but a retried video can reopen
 its existing card. The observer checks Relay's `edit_text` capability first and
-waits silently on old Relay releases.
+waits silently on old Relay releases. Until Relay also advertises `delete_text`,
+it continues editing the existing card without creating replacements.
 
 Kokoro records completed spoken sections; Whisper records processed audio time;
 ffmpeg writes `out_time_us` through its progress protocol. Percentages are real
