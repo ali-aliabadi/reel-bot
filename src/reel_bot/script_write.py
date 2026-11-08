@@ -16,7 +16,7 @@ from typing import Any
 
 import anthropic
 
-from reel_bot import script, store, store_videos, videos
+from reel_bot import script, script_paste, store, store_videos, videos
 from reel_bot.stories import Story
 
 log = logging.getLogger(__name__)
@@ -108,9 +108,9 @@ def add(
     Returns its problems; empty once it is recorded."""
     video, story = _picked(conn, video_id)
     try:
-        draft = script.parse(reply, story, video)
-    except script.ScriptError:
-        return ["it is not the JSON asked for"]
+        draft = script_paste.parse(reply, story, video)
+    except script.ScriptError as err:
+        return [str(err)]
     found = script.problems(draft, video)
     if not found:
         path = videos.video_dir(out_dir, video_id) / FILENAME

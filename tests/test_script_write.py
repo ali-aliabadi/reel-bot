@@ -83,7 +83,7 @@ def test_add_records_a_usable_pasted_script_for_free(
     v = picked(conn)
     out = tmp_path / "out"
     assert script_write.add(conn, out, v.id, "not json", Clock()) == [
-        "it is not the JSON asked for"
+        "it is not in the format asked for: it has no HOOK, SCENE and PICTURE lines"
     ]
     long = good().replace('"w w', '"' + "w " * 50 + "w", 1)
     assert script_write.add(conn, out, v.id, long, Clock()) == [

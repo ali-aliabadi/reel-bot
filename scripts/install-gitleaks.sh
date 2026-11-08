@@ -19,7 +19,8 @@ tarball="gitleaks_${version#v}_${platform}.tar.gz"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL -o "$tmp/$tarball" \
+# GitHub release downloads sometimes answer 504; retry rather than fail CI.
+curl -fsSL --retry 6 --retry-all-errors --retry-delay 5 -o "$tmp/$tarball" \
 	"https://github.com/gitleaks/gitleaks/releases/download/${version}/${tarball}"
 echo "$sha  $tmp/$tarball" | sha256sum -c - >/dev/null 2>&1 ||
 	echo "$sha  $tmp/$tarball" | shasum -a 256 -c - >/dev/null
