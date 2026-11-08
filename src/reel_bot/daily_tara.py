@@ -16,7 +16,7 @@ from reel_bot import (
     guide,
     narration,
     pipeline,
-    script,
+    script_paste,
     script_write,
     store_daily,
     store_videos,
@@ -41,7 +41,7 @@ def script_step(run: Run, video: videos.Video, story: Story, sent: dict[str, str
     conn, vid = run.conn, video.id
     tries = sum(step.startswith("script-") for step in sent)
     if tries == 0:
-        paste = script.chat_prompt(story, video)
+        paste = script_paste.chat_prompt(story, video)
     else:
         got = poll(run, sent[f"script-{tries}"])
         if got is None:
@@ -51,7 +51,7 @@ def script_step(run: Run, video: videos.Video, story: Story, sent: dict[str, str
             return ""
         if tries == SCRIPT_TRIES:
             raise DailyError(f"ChatGPT's script still has problems: {'; '.join(found)}")
-        paste = script.chat_fix(found)
+        paste = script_paste.chat_fix(found)
     msg = script_message(run.people.narrator, vid, story.title, paste, tries + 1)
     store_daily.add_step(conn, vid, f"script-{tries + 1}", run.relay.send(msg), run.clock())
     return "asked for the script" if tries == 0 else f"asked for fix {tries} of the script"

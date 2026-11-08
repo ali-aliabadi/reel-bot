@@ -23,6 +23,7 @@ from reel_bot import (
     relay_api,
     render,
     script,
+    script_paste,
     tiktok,
     youtube,
 )
@@ -72,7 +73,7 @@ def replies(rng: random.Random, good: dict[str, Any]) -> list[bytes]:
 
 
 def parse_script(raw: bytes) -> object:
-    return script.parse(raw.decode("utf-8", "replace"), FOX, VIDEO)
+    return script_paste.parse(raw.decode("utf-8", "replace"), FOX, VIDEO)
 
 
 @pytest.mark.parametrize(

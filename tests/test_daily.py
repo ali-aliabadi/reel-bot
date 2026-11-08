@@ -19,6 +19,7 @@ from reel_bot import (
     pipeline,
     publish,
     script,
+    script_paste,
     store,
     store_daily,
     store_videos,
@@ -180,7 +181,7 @@ def test_tick_records_the_pick_then_asks_tara_once(
     assert video.chosen_by == "ali"
     paste = relay.last()
     assert paste["to"] == ["tara"]
-    assert paste["blocks"][1]["text"] == script.chat_prompt(
+    assert paste["blocks"][1]["text"] == script_paste.chat_prompt(
         next(s for s in store.all_stories(conn) if s.id == video.story_id), video
     )
     assert "options" not in paste["blocks"][2]
@@ -263,7 +264,7 @@ def test_a_script_with_problems_goes_back_to_chatgpt_twice_then_stops(
     assert daily.tick(run) == [f"{vid}\tasked for fix 1 of the script"]
     fix = relay.last()
     assert fix["idempotency_key"] == f"{vid}-script-2"
-    assert "it is not the JSON asked for" in fix["blocks"][1]["text"]
+    assert "not in the format asked for" in fix["blocks"][1]["text"]
     relay.answer(3, pasted(SCRIPT.replace("word0", "word0 extra extra")))
     assert daily.tick(run) == [f"{vid}\tasked for fix 2 of the script"]
     relay.answer(4, pasted(json.dumps({"hook": "", "paragraphs": [], "lesson": ""})))
