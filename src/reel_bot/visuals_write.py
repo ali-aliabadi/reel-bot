@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 LICENCE = "OpenAI terms of use: output assigned to the user, commercial use allowed"
 GEMINI_LICENCE = "Google AI Studio terms: Google does not claim ownership of original output"
-GIF_TIMEOUT_S = 30
+ANIMATION_TIMEOUT_S = 30
 FILENAME = "visuals.json"
 LATER = ("visuals", "render")  # stages a new picture makes stale
 
@@ -32,7 +32,7 @@ LATER = ("visuals", "render")  # stages a new picture makes stale
 @dataclass(frozen=True)
 class Made:
     """A picture as it arrived: its bytes, who made it (or chose reel-bot's draft),
-    and when; provenance defaults to ChatGPT for stills and Gemini for GIFs."""
+    and when; provenance defaults to ChatGPT for stills and Gemini for animations."""
 
     data: bytes
     by: str
@@ -56,22 +56,29 @@ def found(folder: Path, pic: visuals.Picture) -> Path | None:
     return next((p for p in paths if p.is_file()), None)
 
 
-def _check_gif(path: Path) -> None:
-    """Decode one pass before saving, even when the GIF requests infinite looping."""
+def _check_animation(path: Path) -> None:
+    """Decode one pass before saving and require an actual video stream."""
+    kind = path.suffix[1:].upper()
     args = [
         "ffmpeg", "-nostdin", "-v", "error", "-xerror", "-abort_on", "empty_output",
-        "-f", "gif", "-ignore_loop", "1", "-threads", "1",
-        "-max_pixels", str(visuals.GIF_MAX_PIXELS), "-i", str(path),
-        "-map", "0:v:0", "-f", "null", "-",
+        *visuals.ANIMATION_INPUTS[path.suffix], "-threads", "1",
+        "-max_pixels", str(visuals.ANIMATION_MAX_PIXELS), "-i", str(path),
+        "-map", "0:V:0", "-f", "null", "-",
     ]  # fmt: skip
     try:
-        subprocess.run(args, capture_output=True, timeout=GIF_TIMEOUT_S, check=True)  # noqa: S603
+        subprocess.run(  # noqa: S603
+            args, capture_output=True, timeout=ANIMATION_TIMEOUT_S, check=True
+        )
     except FileNotFoundError as err:
-        raise visuals.VisualsError("ffmpeg is needed to import a GIF") from err
+        raise visuals.VisualsError(f"ffmpeg is needed to import a {kind}") from err
     except subprocess.TimeoutExpired as err:
-        raise visuals.VisualsError(f"the GIF took over {GIF_TIMEOUT_S} s to decode") from err
+        raise visuals.VisualsError(
+            f"the {kind} took over {ANIMATION_TIMEOUT_S} s to decode"
+        ) from err
     except subprocess.CalledProcessError as err:
-        raise visuals.VisualsError("the GIF is unreadable or its frame size is too large") from err
+        raise visuals.VisualsError(
+            f"the {kind} is unreadable or its frame size is too large"
+        ) from err
 
 
 def add(conn: sqlite3.Connection, out_dir: Path, video_id: str, number: int, made: Made) -> Path:
@@ -80,24 +87,24 @@ def add(conn: sqlite3.Connection, out_dir: Path, video_id: str, number: int, mad
     if not 1 <= number <= len(pictures):
         raise visuals.VisualsError(f"video {video_id} has pictures 1 to {len(pictures)}")
     pic, suffix = pictures[number - 1], visuals.scene_suffix(made.data)
-    is_gif = suffix == visuals.GIF_SUFFIX
+    animated = suffix in visuals.ANIMATION_INPUTS
     folder = videos.video_dir(out_dir, video_id)
     old = found(folder, pic)
     path = folder / f"{pic.name}{suffix}"
     with tempfile.TemporaryDirectory(dir=folder) as staging:
         tmp = Path(staging) / path.name
         tmp.write_bytes(made.data)
-        if is_gif:
-            _check_gif(tmp)
+        if animated:
+            _check_animation(tmp)
         if old is not None:
             store_videos.clear_stages(conn, video_id, LATER)
         tmp.replace(path)
     if old is not None and old != path:
         old.unlink()
-    provider = "Gemini" if is_gif else "ChatGPT"
+    provider = "Gemini" if animated else "ChatGPT"
     source = made.source or f"made in {provider} by {made.by}"
-    licence = made.licence or (GEMINI_LICENCE if is_gif else LICENCE)
-    asset = videos.Asset(path.name, "footage" if is_gif else "image", source, licence, made.at)
+    licence = made.licence or (GEMINI_LICENCE if animated else LICENCE)
+    asset = videos.Asset(path.name, "footage" if animated else "image", source, licence, made.at)
     store_videos.add_asset(conn, video_id, asset)
     log.info("picture added", extra={"video_id": video_id, "section": pic.section})
     return path
