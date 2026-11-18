@@ -63,12 +63,12 @@ Picture prompts in Relay are copyable code blocks, including alongside a draft;
 use Telegram's code-block Copy action (client support may vary). Paste into
 Gemini AI Studio or ChatGPT and reply with the image file.
 
-To use a short Gemini GIF for a scene, download it and reply to the matching
-Telegram prompt with the `.gif` as a file. You can also add it with
+To use a short Gemini GIF or MP4 for a scene, reply to the matching Telegram
+prompt with the animation or attach the downloaded file. You can also add it with
 `make run ARGS="visuals VIDEO_ID --add 2 /path/to/scene.gif"` (replace `2` with
-the scene number). The GIF loops at its original pace for that scene, with the
-same narration, captions and dissolves in the final MP4. Still images and GIFs
-can share a video.
+the scene number). The animation loops for the scene. The final MP4 uses the
+story's narration, captions and dissolves. Still images and animations can
+share a video.
 
 To test Gemini's image API separately, put `GEMINI_API_KEY` in the VPS's `.env`
 using a key from a project **with billing disabled**, then run from the checkout:

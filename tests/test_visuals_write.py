@@ -71,12 +71,12 @@ def run_media(binary: str, *args: str) -> str:
     ).stdout
 
 
-@pytest.fixture
-def short_gif(tmp_path: Path) -> Path:
-    path = tmp_path / "gemini.download"  # detection should work without a .gif file name
+def short_animation(tmp_path: Path, kind: str) -> Path:
+    path = tmp_path / "gemini.download"  # detection should work without a file extension
+    encode = ["-loop", "-1"] if kind == "gif" else ["-c:v", "libx264", "-pix_fmt", "yuv420p"]
     run_media(
         "ffmpeg", "-f", "lavfi", "-i", "nullsrc=s=96x96:r=10,geq=lum='255*mod(N,2)':cb=128:cr=128",
-        "-frames:v", "2", "-loop", "-1", "-f", "gif", str(path),
+        "-frames:v", "2", *encode, "-f", kind, str(path),
     )  # fmt: skip
     return path
 
@@ -125,7 +125,7 @@ def test_refuses_odd_pictures_numbers_and_a_video_without_a_script(
 ) -> None:
     out = tmp_path / "out"
     v = scripted(conn, out)
-    with pytest.raises(visuals.VisualsError, match="not a PNG"):
+    with pytest.raises(visuals.VisualsError, match="the scene needs a PNG"):
         visuals_write.add(conn, out, v.id, 1, made(b"<html>"))
     assert list((out / v.id).glob("picture-*")) == []
     for n in (0, 4):
@@ -137,9 +137,11 @@ def test_refuses_odd_pictures_numbers_and_a_video_without_a_script(
 
 
 @needs_ffmpeg
-def test_cli_renders_short_gif_with_stills_and_keeps_it_moving(
-    conn: sqlite3.Connection, tmp_path: Path, short_gif: Path
+@pytest.mark.parametrize("kind", ["gif", "mp4"])
+def test_cli_renders_short_animation_with_stills_and_keeps_it_moving(
+    conn: sqlite3.Connection, tmp_path: Path, kind: str
 ) -> None:
+    animation = short_animation(tmp_path, kind)
     out = tmp_path / "out"
     v = scripted(conn, out)
     folder = out / v.id
@@ -149,10 +151,11 @@ def test_cli_renders_short_gif_with_stills_and_keeps_it_moving(
     for n in (1, 2, 3):
         visuals_write.add(conn, out, v.id, n, made(still.read_bytes()))
     assert visuals_write.finish(conn, out, v.id, Clock()) == []
-    assert main(["visuals", v.id, "--add", "2", str(short_gif)], env, Clock()) == 0
+    assert main(["visuals", v.id, "--add", "2", str(animation)], env, Clock()) == 0
     assert not (folder / "picture-2.png").exists()
-    assert (folder / "picture-2.gif").read_bytes() == short_gif.read_bytes()
-    asset = next(a for a in store_videos.assets(conn, v.id) if a.path == "picture-2.gif")
+    scene = folder / f"picture-2.{kind}"
+    assert scene.read_bytes() == animation.read_bytes()
+    asset = next(a for a in store_videos.assets(conn, v.id) if a.path == scene.name)
     assert (asset.kind, asset.source, asset.licence) == (
         "footage", "made in Gemini by ali", visuals_write.GEMINI_LICENCE,
     )  # fmt: skip
@@ -177,7 +180,7 @@ def test_cli_renders_short_gif_with_stills_and_keeps_it_moving(
     streams = json.loads(probe)["streams"]
     assert [s["codec_name"] for s in streams] == ["h264", "aac"]
     assert [float(s["duration"]) for s in streams] == pytest.approx([4, 4], abs=0.1)
-    # Look for hard changes well inside the second scene, after the 0.2 s GIF
+    # Look for hard changes well inside the second scene, after the 0.2 s clip
     # would have ended. The fades and the caption fall outside this interval.
     changes = run_media(
         "ffmpeg", "-i", str(mp4), "-an", "-vf",
@@ -200,3 +203,14 @@ def test_unreadable_gif_does_not_replace_a_scene_or_invalidate_its_render(
     assert path.read_bytes() == PNG
     assert sorted(p.name for p in path.parent.iterdir()) == ["picture-1.png", "script.json"]
     assert "render" in store_videos.stage_runs(conn, v.id)
+
+
+@needs_ffmpeg
+def test_mp4_with_only_audio_is_rejected(conn: sqlite3.Connection, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    v = scripted(conn, out)
+    clip = tmp_path / "audio.mp4"
+    run_media("ffmpeg", "-f", "lavfi", "-i", "sine=frequency=220:duration=0.2", str(clip))
+    with pytest.raises(visuals.VisualsError, match="the MP4 is unreadable"):
+        visuals_write.add(conn, out, v.id, 1, made(clip.read_bytes()))
+    assert list((out / v.id).glob("picture-*")) == []

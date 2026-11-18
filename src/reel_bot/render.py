@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from reel_bot.captions import Captions, Cue
-from reel_bot.visuals import GIF_MAX_PIXELS, GIF_SUFFIX
+from reel_bot.visuals import ANIMATION_INPUTS, ANIMATION_MAX_PIXELS
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
 OVERSCAN = 1.1  # the picture is scaled this much larger than the frame to leave room to pan
@@ -38,8 +38,8 @@ class Shot:
     seconds: float
 
     @property
-    def is_gif(self) -> bool:
-        return Path(self.picture).suffix.lower() == GIF_SUFFIX
+    def animation_input(self) -> tuple[str, ...] | None:
+        return ANIMATION_INPUTS.get(Path(self.picture).suffix.lower())
 
 
 def timeline(c: Captions, pictures: Sequence[tuple[str, str]], total: float) -> tuple[Shot, ...]:
@@ -107,9 +107,9 @@ def _still_filter(i: int, seconds: float) -> str:
 
 
 def _shot_filter(i: int, shot: Shot, seconds: float) -> str:
-    if shot.is_gif:
+    if shot.animation_input is not None:
         framing = (
-            f"[{i}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
+            f"[{i}:V:0]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
             f"crop={WIDTH}:{HEIGHT},fps={FPS}:eof_action=pass"
         )
     else:
@@ -132,9 +132,8 @@ def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str)
         for i, s in enumerate(shots)
     ]
     for s, seconds in zip(shots, durations, strict=True):
-        if s.is_gif:
-            args += ["-f", "gif", "-ignore_loop", "1", "-stream_loop", "-1",
-                     "-max_pixels", str(GIF_MAX_PIXELS)]  # fmt: skip
+        if (animation := s.animation_input) is not None:
+            args += [*animation, "-stream_loop", "-1", "-max_pixels", str(ANIMATION_MAX_PIXELS)]
         else:
             args += ["-loop", "1", "-framerate", str(FPS)]
         args += ["-t", f"{seconds:.6f}", "-threads", "1", "-i", s.picture]

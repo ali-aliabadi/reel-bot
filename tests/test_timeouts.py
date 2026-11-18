@@ -69,14 +69,14 @@ def test_render_ffmpeg_times_out(tmp_path: Path) -> None:
         render_write._run(ENDLESS, tmp_path, 0.5)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_gif_validation_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_animation_validation_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def slow(*args: Any, timeout: float, **kwargs: Any) -> None:
-        assert timeout == visuals_write.GIF_TIMEOUT_S
+        assert timeout == visuals_write.ANIMATION_TIMEOUT_S
         raise visuals_write.subprocess.TimeoutExpired(args[0], timeout)
 
     monkeypatch.setattr(visuals_write.subprocess, "run", slow)
     with pytest.raises(visuals.VisualsError, match="took over"):
-        visuals_write._check_gif(tmp_path / "scene.gif")  # pyright: ignore[reportPrivateUsage]
+        visuals_write._check_animation(tmp_path / "scene.mp4")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_whisper_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     vo.add_argument("recording", type=Path, help="the audio file (voice note, m4a, wav)")
     vi = sub.add_parser("visuals", help="show missing pictures' prompts; done once all are in")
     vi.add_argument("video_id")
-    vi.add_argument("--add", nargs=2, metavar=("N", "FILE"), help="add a still or GIF for scene N")
+    vi.add_argument("--add", nargs=2, metavar=("N", "FILE"), help="add a picture, GIF or MP4")
     mk = sub.add_parser("make", help="run every stage the video is ready for (cached)")
     mk.add_argument("video_id")
     mk.add_argument("--voice", type=Path, help="Tara's new take; redoes captions and render")
