@@ -407,11 +407,11 @@ def test_an_answer_without_a_picture_is_asked_for_again(
     daily.tick(run)
     voiced(conn, vid)
     daily.tick(run)
-    relay.answer(4, Answer("tara", "", None, "", b"GIF89a"))
+    relay.answer(4, Answer("tara", "", None, "", b"<html>"))
     daily.tick(run)
     again = relay.last()
     assert again["title"].startswith("Again: Picture 1 of 4")
-    assert "the picture is not a PNG, JPEG or WebP" in again["blocks"][0]["text"]
+    assert "the picture is not a PNG, JPEG, WebP or GIF" in again["blocks"][0]["text"]
     relay.answer(5, PNG)
     assert daily.tick(run) == [f"{vid}\tasked for picture 2"]
 

@@ -21,6 +21,8 @@ from reel_bot import (
     relay_api,
     render,
     render_write,
+    visuals,
+    visuals_write,
     voice,
     web,
 )
@@ -65,6 +67,16 @@ def slow_api() -> Iterator[str]:
 def test_render_ffmpeg_times_out(tmp_path: Path) -> None:
     with pytest.raises(render.RenderError, match="took over"):
         render_write._run(ENDLESS, tmp_path, 0.5)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_gif_validation_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def slow(*args: Any, timeout: float, **kwargs: Any) -> None:
+        assert timeout == visuals_write.GIF_TIMEOUT_S
+        raise visuals_write.subprocess.TimeoutExpired(args[0], timeout)
+
+    monkeypatch.setattr(visuals_write.subprocess, "run", slow)
+    with pytest.raises(visuals.VisualsError, match="took over"):
+        visuals_write._check_gif(tmp_path / "scene.gif")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_whisper_times_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

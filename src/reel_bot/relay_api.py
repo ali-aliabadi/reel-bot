@@ -35,7 +35,7 @@ class Answer:
     text: str  # the button or typed reply; "" for a voice note or picture
     audio: bytes | None  # a voice note or audio file
     audio_type: str
-    image: bytes | None = None  # a picture (Relay keeps only PNG, JPEG and WebP)
+    image: bytes | None = None  # a scene asset forwarded by Relay
 
     def audio_suffix(self) -> str:
         return _AUDIO_EXT.get(self.audio_type, ".audio")
@@ -141,8 +141,8 @@ def picture_message(
             {
                 "type": "question",
                 "text": "Copy the prompt above into Gemini AI Studio or ChatGPT, "
-                "then reply with the picture "
-                "(send it as a file to keep full quality).",
+                "then reply with the picture or a short GIF. "
+                "Send GIFs as files to keep the animation.",
                 "reply": "image",
             },
         ],
@@ -246,7 +246,7 @@ def _answer(item: object) -> Answer:
     if not isinstance(who, str) or not who or not isinstance(text, str):
         raise RelayError("an answer has no recipient or text")
     audio, audio_type = _file(a, "audio")
-    image, _ = _file(a, "image")  # the bytes decide the type (visuals.suffix)
+    image, _ = _file(a, "image")  # the bytes decide the type (visuals.scene_suffix)
     return Answer(who, text, audio, audio_type, image)
 
 

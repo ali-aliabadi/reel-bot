@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from reel_bot.captions import Captions, Cue
+from reel_bot.visuals import GIF_MAX_PIXELS, GIF_SUFFIX
 
 WIDTH, HEIGHT, FPS = 1080, 1920, 30
 OVERSCAN = 1.1  # the picture is scaled this much larger than the frame to leave room to pan
@@ -35,6 +36,10 @@ class Shot:
     picture: str  # file name in the video's directory
     start: float
     seconds: float
+
+    @property
+    def is_gif(self) -> bool:
+        return Path(self.picture).suffix.lower() == GIF_SUFFIX
 
 
 def timeline(c: Captions, pictures: Sequence[tuple[str, str]], total: float) -> tuple[Shot, ...]:
@@ -89,7 +94,7 @@ def ass(cues: Sequence[Cue]) -> str:
     return head + "\n".join(lines) + "\n"
 
 
-def _shot_filter(i: int, seconds: float) -> str:
+def _still_filter(i: int, seconds: float) -> str:
     w, h = round(WIDTH * OVERSCAN / 2) * 2, round(HEIGHT * OVERSCAN / 2) * 2
     progress = f"min(on/{max(1, round(seconds * FPS) - 1)},1)"
     zoom = f"1+0.06*{progress}" if i % 2 == 0 else f"1.06-0.06*{progress}"
@@ -97,8 +102,20 @@ def _shot_filter(i: int, seconds: float) -> str:
     return (
         f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},"
         f"zoompan=z='{zoom}':x='(iw-iw/zoom)/2':y='{y}':"
-        f"d=1:s={WIDTH}x{HEIGHT}:fps={FPS},"
-        f"trim=duration={seconds:.6f},settb=AVTB,setpts=PTS-STARTPTS,"
+        f"d=1:s={WIDTH}x{HEIGHT}:fps={FPS}"
+    )
+
+
+def _shot_filter(i: int, shot: Shot, seconds: float) -> str:
+    if shot.is_gif:
+        framing = (
+            f"[{i}:v]scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=increase,"
+            f"crop={WIDTH}:{HEIGHT},fps={FPS}:eof_action=pass"
+        )
+    else:
+        framing = _still_filter(i, seconds)
+    return (
+        f"{framing},trim=duration={seconds:.6f},settb=AVTB,setpts=PTS-STARTPTS,"
         f"setsar=1,format=yuv420p[v{i}]"
     )
 
@@ -115,10 +132,17 @@ def ffmpeg_args(shots: Sequence[Shot], voice: str, captions_file: str, out: str)
         for i, s in enumerate(shots)
     ]
     for s, seconds in zip(shots, durations, strict=True):
-        args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{seconds:.6f}",
-                 "-threads", "1", "-i", s.picture]  # fmt: skip
+        if s.is_gif:
+            args += ["-f", "gif", "-ignore_loop", "1", "-stream_loop", "-1",
+                     "-max_pixels", str(GIF_MAX_PIXELS)]  # fmt: skip
+        else:
+            args += ["-loop", "1", "-framerate", str(FPS)]
+        args += ["-t", f"{seconds:.6f}", "-threads", "1", "-i", s.picture]
     args += ["-i", voice]
-    graph = [_shot_filter(i, seconds) for i, seconds in enumerate(durations)]
+    graph = [
+        _shot_filter(i, shot, seconds)
+        for i, (shot, seconds) in enumerate(zip(shots, durations, strict=True))
+    ]
     previous = "v0"
     elapsed = durations[0]
     for i in range(1, len(shots)):

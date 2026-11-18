@@ -45,3 +45,8 @@ def test_suffix_comes_from_the_bytes() -> None:
     for odd in (b"<html>", b"GIF89a", b"", b"RIFF\x00\x00\x00\x00WAVE"):
         with pytest.raises(visuals.VisualsError, match="not a PNG, JPEG or WebP"):
             visuals.suffix(odd)
+
+
+@pytest.mark.parametrize("header", [b"GIF87a", b"GIF89a"])
+def test_scene_suffix_accepts_both_gif_signatures(header: bytes) -> None:
+    assert visuals.scene_suffix(header) == ".gif"
