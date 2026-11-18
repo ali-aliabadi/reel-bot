@@ -114,7 +114,9 @@ never `critical`. A typed answer is untrusted text: validate it.
 
 ## Working agreement
 
-- Branch from `master`, open a PR, merge when CI is green. No direct pushes to `master`.
+- Branch from `master` and open a PR. For each PR you create, merge it once CI
+  passes and verify that the production deployment succeeds. No direct pushes
+  to `master`.
 - Keep docs in sync in the same PR: tick boxes in docs/ROADMAP.md, update docs/ARCHITECTURE.md if the design changed, README.md if usage changed.
 - Small PRs, one roadmap item (or a few tightly related ones) each.
 - If a design question isn't answered in docs/ARCHITECTURE.md, ask ali rather than guessing on anything a viewer would see.
