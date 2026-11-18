@@ -141,8 +141,8 @@ def picture_message(
             {
                 "type": "question",
                 "text": "Copy the prompt above into Gemini AI Studio or ChatGPT, "
-                "then reply with the picture "
-                "(send it as a file to keep full quality).",
+                "then reply with the picture or a short GIF. "
+                "Send GIFs as files to keep the animation.",
                 "reply": "image",
             },
         ],

@@ -70,6 +70,7 @@ def test_picture_message_asks_for_one_picture_and_refuses_an_overlong_prompt() -
     assert text == {"type": "code", "text": "A vine."}
     assert question["reply"] == "image"
     assert "Gemini AI Studio" in question["text"]
+    assert "Send GIFs as files" in question["text"]
     with pytest.raises(RelayError, match="picture 1's prompt"):
         relay_api.picture_message("tara", "vid_1", FOX.title, ["x" * 4001], 1)
 
