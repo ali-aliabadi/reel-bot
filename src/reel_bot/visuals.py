@@ -13,7 +13,10 @@ from reel_bot.image_style import FRAME, PICTURE_STYLE
 from reel_bot.script import Script
 
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-SUFFIXES = (".png", ".jpg", ".webp")  # the picture types a video takes
+GIF_SUFFIX = ".gif"
+SUFFIXES = (".png", ".jpg", ".webp")  # still image providers
+SCENE_SUFFIXES = (*SUFFIXES, GIF_SUFFIX)
+GIF_MAX_PIXELS = 4096 * 4096
 
 
 class VisualsError(Exception):
@@ -63,3 +66,13 @@ def suffix(data: bytes) -> str:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return ".webp"
     raise VisualsError("the picture is not a PNG, JPEG or WebP")
+
+
+def scene_suffix(data: bytes) -> str:
+    """Identify a scene asset by its bytes, including GIF87a and GIF89a."""
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return GIF_SUFFIX
+    try:
+        return suffix(data)
+    except VisualsError as err:
+        raise VisualsError("the picture is not a PNG, JPEG, WebP or GIF") from err

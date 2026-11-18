@@ -1,11 +1,15 @@
 import json
+import shutil
 import sqlite3
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from reel_bot import script, store, store_videos, videos, visuals, visuals_write
+from reel_bot import captions, script, store, store_videos, videos, visuals, visuals_write
+from reel_bot.captions import Captions, Cue, Section
+from reel_bot.cli import main
 from reel_bot.script import Paragraph, Script
 from reel_bot.stories import Story
 from reel_bot.videos import StageRun, Video
@@ -15,6 +19,10 @@ NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 FOX = Story("aesop-fox", "fox-and-grapes", "The Fox and the Grapes", "Aesop", "Townsend", "p. 1")
 PNG = visuals.PNG_MAGIC + b"picture"
 JPEG = b"\xff\xd8\xff\xe0photo"
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None,
+    reason="ffmpeg/ffprobe not installed; GIF rendering needs them",
+)
 
 
 class Clock:
@@ -51,6 +59,26 @@ def scripted(conn: sqlite3.Connection, out: Path, with_script: bool = True) -> V
 
 def made(data: bytes = PNG) -> Made:
     return Made(data, "tara", NOW)
+
+
+def run_media(binary: str, *args: str) -> str:
+    return subprocess.run(  # noqa: S603
+        [binary, "-v", "error", *args],
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=60,
+    ).stdout
+
+
+@pytest.fixture
+def short_gif(tmp_path: Path) -> Path:
+    path = tmp_path / "gemini.download"  # detection should work without a .gif file name
+    run_media(
+        "ffmpeg", "-f", "lavfi", "-i", "nullsrc=s=96x96:r=10,geq=lum='255*mod(N,2)':cb=128:cr=128",
+        "-frames:v", "2", "-loop", "-1", "-f", "gif", str(path),
+    )  # fmt: skip
+    return path
 
 
 def test_adds_pictures_as_they_come_then_finishes(conn: sqlite3.Connection, tmp_path: Path) -> None:
@@ -106,3 +134,69 @@ def test_refuses_odd_pictures_numbers_and_a_video_without_a_script(
     bare = scripted(conn, out, with_script=False)
     with pytest.raises(visuals.VisualsError, match="no script"):
         visuals_write.finish(conn, out, bare.id, Clock())
+
+
+@needs_ffmpeg
+def test_cli_renders_short_gif_with_stills_and_keeps_it_moving(
+    conn: sqlite3.Connection, tmp_path: Path, short_gif: Path
+) -> None:
+    out = tmp_path / "out"
+    v = scripted(conn, out)
+    folder = out / v.id
+    env = {"REEL_BOT_DB_PATH": str(tmp_path / "reel-bot.db"), "REEL_BOT_OUT_DIR": str(out)}
+    still = tmp_path / "still.png"
+    run_media("ffmpeg", "-f", "lavfi", "-i", "color=c=navy:s=96x96", "-frames:v", "1", str(still))
+    for n in (1, 2, 3):
+        visuals_write.add(conn, out, v.id, n, made(still.read_bytes()))
+    assert visuals_write.finish(conn, out, v.id, Clock()) == []
+    assert main(["visuals", v.id, "--add", "2", str(short_gif)], env, Clock()) == 0
+    assert not (folder / "picture-2.png").exists()
+    assert (folder / "picture-2.gif").read_bytes() == short_gif.read_bytes()
+    asset = next(a for a in store_videos.assets(conn, v.id) if a.path == "picture-2.gif")
+    assert (asset.kind, asset.source, asset.licence) == (
+        "footage", "made in Gemini by ali", visuals_write.GEMINI_LICENCE,
+    )  # fmt: skip
+
+    run_media(
+        "ffmpeg", "-f", "lavfi", "-i", "sine=frequency=220:duration=4", str(folder / "voice.wav")
+    )
+    cap = Captions(
+        v.id, (), (Cue("A fox", 0.2, 0.8),),
+        (Section("p1", 0, 0.9), Section("p2", 1.1, 2.9), Section("p3", 3.1, 4)),
+        1.0,
+    )  # fmt: skip
+    (folder / "captions.json").write_text(captions.to_json(cap), encoding="utf-8")
+    for stage, name in (("voice", "voice.wav"), ("captions", "captions.json")):
+        store_videos.record_stage(conn, v.id, StageRun(stage, name, 0, 1, NOW))
+    assert main(["render", v.id], env, Clock()) == 0
+    mp4 = folder / "render.mp4"
+    assert store_videos.stage_runs(conn, v.id)["render"].path == mp4.name
+    probe = run_media(
+        "ffprobe", "-show_entries", "stream=codec_name,duration", "-of", "json", str(mp4)
+    )
+    streams = json.loads(probe)["streams"]
+    assert [s["codec_name"] for s in streams] == ["h264", "aac"]
+    assert [float(s["duration"]) for s in streams] == pytest.approx([4, 4], abs=0.1)
+    # Look for hard changes well inside the second scene, after the 0.2 s GIF
+    # would have ended. The fades and the caption fall outside this interval.
+    changes = run_media(
+        "ffmpeg", "-i", str(mp4), "-an", "-vf",
+        r"scale=96:96,select=between(t\,1.5\,2.5)*gt(scene\,0.4)", "-fps_mode", "passthrough",
+        "-f", "framehash", "-",
+    )  # fmt: skip
+    assert sum(line.startswith("0,") for line in changes.splitlines()) >= 4
+
+
+@needs_ffmpeg
+def test_unreadable_gif_does_not_replace_a_scene_or_invalidate_its_render(
+    conn: sqlite3.Connection, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    v = scripted(conn, out)
+    path = visuals_write.add(conn, out, v.id, 1, made())
+    store_videos.record_stage(conn, v.id, StageRun("render", "render.mp4", 0, 1, NOW))
+    with pytest.raises(visuals.VisualsError, match="the GIF is unreadable"):
+        visuals_write.add(conn, out, v.id, 1, made(b"GIF89a\x3b"))
+    assert path.read_bytes() == PNG
+    assert sorted(p.name for p in path.parent.iterdir()) == ["picture-1.png", "script.json"]
+    assert "render" in store_videos.stage_runs(conn, v.id)
